@@ -411,7 +411,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 BackgroundTransparency = 0,
                 Hover = "Text",
                 PanelBackground = "White",
-                PanelBackgroundTransparency = 0.78,
+                PanelBackgroundTransparency = 0.95,
                 WindowBackground = "Background",
                 WindowShadow = "Black",
                 WindowTopbarTitle = "Text",
@@ -2864,7 +2864,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     BorderSizePixel = 0,
                 }, {
                     ac("UICorner", {
-                            CornerRadius = UDim.new(0, 8),
+                            CornerRadius = UDim.new(0, ad.Radius or 8),
                         }),
                     ac("Frame", {
                             BackgroundTransparency = 1,
@@ -2875,7 +2875,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                             },
                         }, {
                             ac("UICorner", {
-                                    CornerRadius = UDim.new(0, 8),
+                                    CornerRadius = UDim.new(0, ad.Radius or 8),
                                 }),
                         }),
                     ac("Frame", {
@@ -2893,7 +2893,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                             BackgroundTransparency = 1,
                         }, {
                             ac("UICorner", {
-                                    CornerRadius = UDim.new(0, 8),
+                                    CornerRadius = UDim.new(0, ad.Radius or 8),
                                 }),
                         }),
                     ac("ImageLabel", {
@@ -2908,7 +2908,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                             },
                         }, {
                             ac("UICorner", {
-                                    CornerRadius = UDim.new(0, 8),
+                                    CornerRadius = UDim.new(0, ad.Radius or 8),
                                 }),
                         }),
                     ac("Frame", {
@@ -2918,6 +2918,17 @@ type ConfigType__DARKLUA_TYPE_a = {
                         }, {
                         }),
                 })
+            function ae.SetRadius(radius)
+                for _, obj in ipairs(ae.Frame:GetDescendants()) do
+                    if obj:IsA("UICorner") then
+                        obj.CornerRadius = UDim.new(0, radius)
+                    end
+                end
+                local own = ae.Frame:FindFirstChildOfClass("UICorner")
+                if own then
+                    own.CornerRadius = UDim.new(0, radius)
+                end
+            end
             local af
             task.wait()
             if ad.UseAcrylic then
@@ -3153,7 +3164,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     LabelBackground = Color3.fromHex "#000000",
                     LabelBackgroundTransparency = 0.83,
                     ElementBackground = Color3.fromHex "#2A2A2C",
-                    ElementBackgroundTransparency = 0.42,
+                    ElementBackgroundTransparency = 0,
                 },
                 Light = {
                     Name = "Light",
@@ -10575,13 +10586,13 @@ type ConfigType__DARKLUA_TYPE_a = {
                 MaxSize = av.MaxSize or Vector2.new(850, 560),
                 TopBarButtonIconSize = av.TopBarButtonIconSize,
                 ToggleKey = av.ToggleKey,
-                ElementsRadius = av.ElementsRadius or 12, -- Rounded controls by default
-                Radius = av.Radius or 24, -- Softer rounded window corners
-                Transparent = av.Transparent ~= false, -- Glass transparency enabled by default
+                ElementsRadius = av.ElementsRadius,
+                Radius = av.Radius or 16,
+                Transparent = av.Transparent or false,
                 HideSearchBar = av.HideSearchBar ~= false,
                 ScrollBarEnabled = av.ScrollBarEnabled or false,
                 SideBarWidth = av.SideBarWidth or 200,
-                Acrylic = av.Acrylic ~= false, -- Liquid Glass: acrylic blur enabled by default
+                Acrylic = av.Acrylic or false,
                 NewElements = av.NewElements or false,
                 IgnoreAlerts = av.IgnoreAlerts or false,
                 HidePanelBackground = av.HidePanelBackground or false,
@@ -10652,7 +10663,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 aw.ConfigManager = au:Init(aw)
             end
             if aw.Acrylic then local
-                az = am.AcrylicPaint {UseAcrylic = aw.Acrylic}
+                az = am.AcrylicPaint {UseAcrylic = aw.Acrylic, Radius = aw.UICorner}
                 aw.AcrylicPaint = az
             end
             local az = ao("Frame", {
@@ -12250,7 +12261,53 @@ type ConfigType__DARKLUA_TYPE_a = {
             end
             return aw
         end end end
+-- Liquid Glass configuration (editable defaults). Change these values before CreateWindow.
+local LIQUID_GLASS_DEFAULTS = {
+    Enabled = true,
+    UseGlobalDepthOfFieldBlur = false, -- Roblox DepthOfField is scene-wide, not clipped to a UI frame
+    Transparency = 32,       -- 0 = opaque, 100 = most transparent
+    EdgeRefraction = 55,     -- visual edge/glass emphasis (approximation)
+    BorderHighlight = 60,    -- outline visibility
+    CornerRadius = 24,
+    ElementsRadius = 14,
+    ElementGlass = true,
+    PerformanceMode = true,
+    Tint = Color3.fromRGB(205, 230, 255),
+
+    -- Liquid Glass is a separate material mode from Wind UI Acrylic.
+    -- Requires the uploaded GlassmorphicUI model to be installed in ReplicatedStorage.
+    GlassMode = "Acrylic", -- "Acrylic" or "Liquid Glass"
+    BlurRadius = 12,         -- pixels; 1 is effectively unblurred
+    GlassThickness = 24,    -- edge refraction band, pixels
+    RefractionFactor = 2.1, -- 1-4; 1 disables refraction
+    ChromaticAberration = 0.12, -- 0-1
+    FresnelIntensity = 25,   -- 0-100
+    GlareIntensity = 45,     -- 0-120
+    MaxOutputResolution = 512, -- lower value is friendlier to mobile devices
+
+    -- Continuous reflection (drawn on every panel; follows every curve of the squircle)
+    Reflection = true,
+    ReflectionIntensity = 70, -- 0-100 specular rim
+    ReflectionSheen = 35,     -- 0-100 full-surface sheen
+    ReflectionAngle = 45,     -- degrees, direction of the shared light source
+    LightFollowsPointer = false, -- the light source tracks the cursor / finger
+
+    -- Edge lens: strongest on the inner border, normal in the centre
+    LensEnabled = true,
+    LensBand = 26,            -- px, width of the lens band at rest
+    LensStrength = 65,        -- 0-100
+    LensFalloff = 2,          -- 1-4, how quickly it relaxes toward the centre
+    LensReactive = true,      -- swells when the pointer crosses the inner border
+}
+local LIQUID_GLASS_DEFAULTS_SNAPSHOT = {}
+for key, value in pairs(LIQUID_GLASS_DEFAULTS) do
+    LIQUID_GLASS_DEFAULTS_SNAPSHOT[key] = value
+end
+
 local aa = {
+    LiquidGlassConfig = LIQUID_GLASS_DEFAULTS,
+    LiquidGlassDefaults = LIQUID_GLASS_DEFAULTS_SNAPSHOT,
+    LiquidGlassFX = LiquidGlassFX,
     Window = nil,
     Theme = nil,
     Creator = a.load 'd',
@@ -12358,6 +12415,467 @@ av(aa.NotificationGui)
 av(aa.DropdownGui)
 av(aa.TooltipGui)
 as.Init(aa)
+
+-- ============================================================================
+-- Liquid Glass FX  (native, no external model required)
+--
+--  1. Continuous reflection
+--     Specular rim + full-surface sheen are drawn with the SAME squircle sprites
+--     that WindUI uses for its panels, so the light follows every curve and every
+--     corner without seams. One shared light angle is used by every panel, so the
+--     window, the content panel and toasts all reflect the same light source.
+--
+--  2. Edge lens
+--     A stack of inset squircle rings builds a glass "bevel" that is strongest on
+--     the inner border of a panel and fades to nothing toward the centre
+--     (centre = normal, un-magnified). When the cursor / finger crosses the border
+--     the bevel swells (the band widens and brightens) and relaxes again as the
+--     pointer moves toward the middle of the UI.
+--     If the GlassmorphicUI module is installed and Liquid Glass mode is active,
+--     the same swell also drives its RefractionFactor / Thickness (real refraction).
+-- ============================================================================
+local LiquidGlassFX = { Panels = {}, LightAngle = nil, SwellHook = nil }
+do
+    local fx = LiquidGlassFX
+    local GuiService = af(game:GetService "GuiService")
+    local RING_COUNT = 14
+    local WHITE = Color3.new(1, 1, 1)
+    local touchPos = nil
+    local loopConn = nil
+    local lastTick = 0
+    local lightVec = nil
+    local lastLightAngle = nil
+    local inputConnected = false
+
+    local function num(key, default, lo, hi)
+        local v = tonumber(aa.LiquidGlassConfig[key])
+        if v == nil then v = default end
+        return math.clamp(v, lo, hi)
+    end
+
+    local function smooth(x)
+        x = math.clamp(x, 0, 1)
+        return x * x * (3 - 2 * x)
+    end
+
+    -- profile = { {time, opacity}, ... }  ->  NumberSequence of *transparency*
+    local function seq(profile, scale)
+        local keys = {}
+        for _, p in ipairs(profile) do
+            keys[#keys + 1] = NumberSequenceKeypoint.new(p[1], math.clamp(1 - p[2] * scale, 0, 1))
+        end
+        return NumberSequence.new(keys)
+    end
+
+    -- Bright at both light-facing ends of the gradient axis, dim in between.
+    local RIM_PROFILE = { { 0, 1 }, { 0.16, 0.72 }, { 0.38, 0.14 }, { 0.62, 0.14 }, { 0.84, 0.72 }, { 1, 1 } }
+    local SHEEN_PROFILE = { { 0, 0.10 }, { 0.12, 0.26 }, { 0.28, 0.07 }, { 0.5, 0 }, { 0.78, 0.04 }, { 0.92, 0.15 }, { 1, 0.07 } }
+    -- Lens rings stay visible on all four sides (never fully dark), lit corners a bit stronger.
+    local LENS_PROFILE = { { 0, 1 }, { 0.2, 0.82 }, { 0.4, 0.58 }, { 0.6, 0.58 }, { 0.8, 0.82 }, { 1, 1 } }
+
+    local function deriveRadius(obj)
+        local ok, scale = pcall(function()
+            return obj.SliceScale
+        end)
+        if ok and type(scale) == "number" and obj:IsA("ImageLabel") and obj.ScaleType == Enum.ScaleType.Slice then
+            return math.clamp(scale * 310, 4, 80)
+        end
+        local corner = obj:FindFirstChildOfClass("UICorner")
+        if corner then
+            return math.max(corner.CornerRadius.Offset, 4)
+        end
+        return 14
+    end
+
+    local function newLabel(parent, radius, shape, name, z)
+        local label, ctl = as.NewRoundFrame(radius, shape, {
+            Name = name,
+            Size = UDim2.fromScale(1, 1),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            ZIndex = z or 1,
+            ImageTransparency = 1,
+        })
+        label.Active = false
+        label.Parent = parent
+        return label, ctl
+    end
+
+    local function addGradient(label)
+        local g = Instance.new("UIGradient")
+        g.Parent = label
+        return g
+    end
+
+    local function makeHolder(name, z, parent)
+        local f = Instance.new("Frame")
+        f.Name = name
+        f.BackgroundTransparency = 1
+        f.BorderSizePixel = 0
+        f.Size = UDim2.fromScale(1, 1)
+        f.ZIndex = z
+        f.Active = false
+        f.Parent = parent
+        return f
+    end
+
+    local function destroyLayers(panel)
+        if panel.Under then panel.Under:Destroy() end
+        if panel.Over then panel.Over:Destroy() end
+        panel.Under, panel.Over = nil, nil
+        panel.Rings, panel.Fringes = {}, {}
+    end
+
+    local function build(panel)
+        destroyLayers(panel)
+        local radius = panel.Radius
+        local under = makeHolder("LG_Under", panel.UnderZ, panel.Object)
+        local over = makeHolder("LG_Over", panel.OverZ, panel.Object)
+        panel.Under, panel.Over = under, over
+
+        panel.Sheen, panel.SheenCtl = newLabel(under, radius, "Squircle", "LG_Sheen", 1)
+        panel.SheenGrad = addGradient(panel.Sheen)
+
+        panel.Edge, panel.EdgeCtl = newLabel(over, radius, "SquircleGlass", "LG_Edge", 1)
+        panel.Rim, panel.RimCtl = newLabel(over, radius, "SquircleGlass", "LG_Rim", 2)
+        panel.RimGrad = addGradient(panel.Rim)
+
+        panel.Fringes = {}
+        for i, color in ipairs({ Color3.fromRGB(255, 110, 150), Color3.fromRGB(110, 190, 255) }) do
+            local label, ctl = newLabel(over, radius, "SquircleOutline", "LG_Fringe" .. i, 3)
+            label.ImageColor3 = color
+            panel.Fringes[i] = { Label = label, Ctl = ctl, Grad = addGradient(label), depth = -1 }
+            panel.Fringes[i].Grad.Transparency = seq(LENS_PROFILE, 1)
+        end
+
+        panel.Rings = {}
+        for i = 1, RING_COUNT do
+            local label, ctl = newLabel(over, radius, "SquircleOutline", "LG_Ring" .. i, 1)
+            local grad = addGradient(label)
+            grad.Transparency = seq(LENS_PROFILE, 1)
+            panel.Rings[i] = { Label = label, Ctl = ctl, Grad = grad, depth = -1, alpha = -1 }
+        end
+        panel.RingsDirty = true
+    end
+
+    local function applyAngle(panel, angle)
+        if not panel.Over then return end
+        panel.SheenGrad.Rotation = angle
+        panel.RimGrad.Rotation = angle
+        for _, ring in ipairs(panel.Rings) do ring.Grad.Rotation = angle end
+        for _, fr in ipairs(panel.Fringes) do fr.Grad.Rotation = angle end
+    end
+
+    local function applySwell(panel, swell)
+        if not panel.Over or not panel.LensOn then return end
+        local scaleUI = aa.UIScale or 1
+        local boost = panel.Reactive and swell or 0
+        local depthMax = panel.Band * (1 + 0.9 * boost)
+        local peak = math.clamp(panel.Strength * 0.45 * (1 + 0.8 * boost), 0, 0.9)
+        local size = panel.Object.AbsoluteSize / scaleUI
+        local limit = math.max(math.min(size.X, size.Y) / 2 - 2, 0)
+        local force = panel.RingsDirty or swell <= 0 -- always land exactly on the resting look
+
+        for i, ring in ipairs(panel.Rings) do
+            local u = (i - 1) / (RING_COUNT - 1)
+            local depth = u * depthMax
+            local alpha = peak * (1 - u) ^ panel.Falloff
+            local fits = depth <= limit
+            if ring.Label.Visible ~= fits then ring.Label.Visible = fits end
+            if fits then
+                if force or math.abs(depth - ring.depth) > 0.05 then
+                    ring.depth = depth
+                    ring.Label.Size = UDim2.new(1, -2 * depth, 1, -2 * depth)
+                    ring.Ctl:SetRadius(math.max(panel.Radius - depth, 2))
+                end
+                if force or math.abs(alpha - ring.alpha) > 0.003 then
+                    ring.alpha = alpha
+                    ring.Label.ImageTransparency = 1 - alpha
+                end
+            end
+        end
+
+        local ca = panel.CA * (0.6 + 0.8 * boost)
+        for i, fr in ipairs(panel.Fringes) do
+            local depth = (i == 1 and 0.5 or 2.6) * (1 + boost)
+            fr.Label.Visible = ca > 0.001 and depth <= limit
+            if force or math.abs(depth - fr.depth) > 0.05 then
+                fr.depth = depth
+                fr.Label.Size = UDim2.new(1, -2 * depth, 1, -2 * depth)
+                fr.Ctl:SetRadius(math.max(panel.Radius - depth, 2))
+            end
+            fr.Label.ImageTransparency = 1 - math.clamp(0.45 * ca * (i == 1 and 1 or 0.8), 0, 0.8)
+        end
+        panel.RingsDirty = false
+    end
+
+    local function applyConfig(panel)
+        if not panel.Over or not panel.Over.Parent then return end
+        local config = aa.LiquidGlassConfig
+        local radius = panel.RadiusFn and panel.RadiusFn() or panel.Radius
+        radius = math.max(tonumber(radius) or 14, 2)
+
+        local enabled = config.Enabled ~= false
+        local reflect = enabled and config.Reflection ~= false
+        local I = num("ReflectionIntensity", 70, 0, 100) / 100
+        local S = num("ReflectionSheen", 35, 0, 100) / 100
+        local tint = typeof(config.Tint) == "Color3" and config.Tint or WHITE
+        local light = tint:Lerp(WHITE, 0.6)
+
+        if panel.Radius ~= radius then
+            panel.Radius = radius
+            panel.SheenCtl:SetRadius(radius)
+            panel.EdgeCtl:SetRadius(radius)
+            panel.RimCtl:SetRadius(radius)
+            panel.RingsDirty = true
+        end
+
+        -- reflection ---------------------------------------------------------
+        panel.Under.Visible = reflect and S > 0.001
+        panel.Sheen.ImageColor3 = light
+        panel.Sheen.ImageTransparency = 0
+        panel.SheenGrad.Transparency = seq(SHEEN_PROFILE, S)
+
+        panel.Edge.Visible = reflect and I > 0.001
+        panel.Edge.ImageColor3 = light
+        panel.Edge.ImageTransparency = 1 - math.clamp(0.2 * I, 0, 1)
+        panel.Rim.Visible = reflect and I > 0.001
+        panel.Rim.ImageColor3 = light
+        panel.Rim.ImageTransparency = 0
+        panel.RimGrad.Transparency = seq(RIM_PROFILE, I)
+
+        -- lens ---------------------------------------------------------------
+        panel.LensOn = enabled and config.LensEnabled ~= false and panel.Lens ~= false
+        panel.Band = num("LensBand", 26, 4, 80) * (panel.BandScale or 1)
+        panel.Strength = num("LensStrength", 65, 0, 100) / 100
+        panel.Falloff = num("LensFalloff", 2, 1, 4)
+        panel.Reactive = config.LensReactive ~= false
+        panel.CA = num("ChromaticAberration", 0.12, 0, 1)
+        for _, ring in ipairs(panel.Rings) do
+            ring.Label.ImageColor3 = light
+            if not panel.LensOn then ring.Label.Visible = false end
+        end
+        for _, fr in ipairs(panel.Fringes) do
+            if not panel.LensOn then fr.Label.Visible = false end
+        end
+
+        if panel.Kind == "window" then
+            local window = aa.Window
+            if window and window.AcrylicPaint and window.AcrylicPaint.SetRadius then
+                window.AcrylicPaint.SetRadius(radius)
+            end
+        end
+
+        applyAngle(panel, fx.LightAngle or num("ReflectionAngle", 45, -360, 360))
+        applySwell(panel, panel.Swell)
+    end
+
+    -- pointer --------------------------------------------------------------
+    local function samplePointer()
+        if touchPos then return touchPos end
+        if an.MouseEnabled then return an:GetMouseLocation() end
+        return nil
+    end
+
+    -- 1 on the inner border (and just outside it), easing to 0 toward the centre.
+    local function proximity(panel, p, scaleUI)
+        if not p then return 0 end
+        local pos, size = panel.Object.AbsolutePosition, panel.Object.AbsoluteSize
+        if size.X < 2 or size.Y < 2 then return 0 end
+        local d = math.min(p.X - pos.X, pos.X + size.X - p.X, p.Y - pos.Y, pos.Y + size.Y - p.Y)
+        local reach = math.max(panel.Band * scaleUI * 1.6, 8)
+        if d >= 0 then
+            return 1 - smooth(d / reach)
+        end
+        return smooth(1 + d / (reach * 0.5))
+    end
+
+    local function step(dt)
+        local config = aa.LiquidGlassConfig
+        local p = samplePointer()
+        local scaleUI = aa.UIScale or 1
+        local settled = true
+        local now = os.clock()
+        local mainPanel = nil
+
+        for _, panel in pairs(fx.Panels) do
+            if panel.Kind == "window" then mainPanel = panel end
+            if panel.Over and panel.LensOn then
+                local target = panel.Reactive and proximity(panel, p, scaleUI) or 0
+                local k = 1 - math.exp(-dt * 14)
+                local value = panel.Swell + (target - panel.Swell) * k
+                if math.abs(target - value) < 0.002 then value = target end
+                if value ~= panel.Swell then
+                    panel.Swell = value
+                    applySwell(panel, value)
+                end
+                if value ~= target then settled = false end
+
+                if panel.Kind == "window" and fx.SwellHook
+                    and math.abs(value - (panel.HookSwell or 0)) > 0.03
+                    and now - (panel.HookClock or 0) > 0.08 then
+                    panel.HookSwell, panel.HookClock = value, now
+                    fx.SwellHook(panel, value)
+                end
+            end
+        end
+
+        -- optional: the light source follows the pointer (shared by every panel)
+        if config.LightFollowsPointer and mainPanel and p and mainPanel.Object.AbsoluteSize.X > 2 then
+            local center = mainPanel.Object.AbsolutePosition + mainPanel.Object.AbsoluteSize / 2
+            local v = p - center
+            if v.Magnitude > 1 then
+                local a2 = math.atan2(v.Y, v.X) * 2 -- doubled angle: gradient is symmetric by 180 degrees
+                local target = Vector2.new(math.cos(a2), math.sin(a2))
+                local k = 1 - math.exp(-dt * 8)
+                lightVec = lightVec and lightVec:Lerp(target, k) or target
+                local angle = math.deg(math.atan2(lightVec.Y, lightVec.X)) / 2
+                fx.LightAngle = angle
+                if not lastLightAngle or math.abs(angle - lastLightAngle) > 0.1 then
+                    lastLightAngle = angle
+                    for _, panel in pairs(fx.Panels) do applyAngle(panel, angle) end
+                    settled = false
+                end
+            end
+        end
+        return settled
+    end
+
+    local function kick()
+        if loopConn or next(fx.Panels) == nil then return end
+        lastTick = os.clock()
+        loopConn = am.Heartbeat:Connect(function()
+            local now = os.clock()
+            local dt = math.min(now - lastTick, 0.1)
+            lastTick = now
+            if step(dt) and loopConn then
+                loopConn:Disconnect()
+                loopConn = nil
+            end
+        end)
+    end
+
+    local function connectInput()
+        if inputConnected then return end
+        inputConnected = true
+        local function touchPosition(input)
+            return Vector2.new(input.Position.X, input.Position.Y) + GuiService:GetGuiInset()
+        end
+        an.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                kick()
+            elseif input.UserInputType == Enum.UserInputType.Touch then
+                touchPos = touchPosition(input)
+                kick()
+            end
+        end)
+        an.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                touchPos = touchPosition(input)
+                kick()
+            end
+        end)
+        an.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                touchPos = nil
+                kick()
+            end
+        end)
+    end
+
+    -- public ---------------------------------------------------------------
+    -- opts: Kind ("window" | "panel" | "toast"), Radius (number or function),
+    --       Lens (false disables the edge lens), BandScale, UnderZ, OverZ
+    function fx.Attach(obj, opts)
+        if typeof(obj) ~= "Instance" or not obj:IsA("GuiObject") then return nil end
+        if fx.Panels[obj] then return fx.Panels[obj] end
+        opts = opts or {}
+        local panel = {
+            Object = obj,
+            Kind = opts.Kind or "panel",
+            UnderZ = opts.UnderZ or 2,
+            OverZ = opts.OverZ or 50,
+            Lens = opts.Lens,
+            BandScale = opts.BandScale or 1,
+            Swell = 0,
+            Rings = {},
+            Fringes = {},
+        }
+        if type(opts.Radius) == "function" then
+            panel.RadiusFn = opts.Radius
+            panel.Radius = math.max(tonumber(opts.Radius()) or 14, 2)
+        elseif type(opts.Radius) == "number" then
+            panel.Radius = opts.Radius
+        else
+            panel.Radius = deriveRadius(obj)
+        end
+        fx.Panels[obj] = panel
+        build(panel)
+        applyConfig(panel)
+        connectInput()
+        obj.Destroying:Connect(function()
+            fx.Panels[obj] = nil
+        end)
+        return panel
+    end
+
+    function fx.Detach(obj)
+        local panel = fx.Panels[obj]
+        if not panel then return end
+        fx.Panels[obj] = nil
+        destroyLayers(panel)
+    end
+
+    function fx.Refresh()
+        if not aa.LiquidGlassConfig.LightFollowsPointer then
+            fx.LightAngle, lightVec, lastLightAngle = nil, nil, nil
+        end
+        for _, panel in pairs(fx.Panels) do
+            panel.RingsDirty = true
+            applyConfig(panel)
+        end
+        kick()
+    end
+
+    function fx.AttachWindow(window)
+        local main = window and window.UIElements and window.UIElements.Main
+        if not main then return end
+        fx.Attach(main, {
+            Kind = "window",
+            UnderZ = 2,
+            OverZ = 100,
+            Radius = function()
+                return window.UICorner
+            end,
+        })
+        local bar = window.UIElements.MainBar
+        if bar and not window.HidePanelBackground then
+            fx.Attach(bar, {
+                Kind = "panel",
+                UnderZ = 4,
+                OverZ = 10,
+                BandScale = 0.6,
+                Radius = function()
+                    return math.max(window.UICorner - window.UIPadding / 2, 2)
+                end,
+            })
+        end
+    end
+
+    -- Toasts: attach the reflection (no lens) to every notification card.
+    function fx.WatchNotifications(holder)
+        if not holder then return end
+        holder.DescendantAdded:Connect(function(inst)
+            if inst:IsA("ImageLabel") and inst.Parent and inst.Parent:IsA("Frame") and inst.Parent.Parent == holder then
+                task.defer(function()
+                    if inst.Parent then
+                        fx.Attach(inst, { Kind = "toast", UnderZ = 2, OverZ = 50, Lens = false })
+                    end
+                end)
+            end
+        end)
+    end
+end
 function aa.SetParent(ay, az)
     if aa.ScreenGui then
         aa.ScreenGui.Parent = az
@@ -12374,6 +12892,7 @@ function aa.SetParent(ay, az)
 end
 math.clamp(aa.TransparencyValue, 0, 1)
 local ay = aa.NotificationModule.Init(aa.NotificationGui)
+LiquidGlassFX.WatchNotifications(ay.Frame)
 function aa.Notify(az, aA)
     aA.Holder = ay.Frame
     aA.Window = aa.Window
@@ -12412,6 +12931,281 @@ end
 function aa.GetTransparency(az)
     return aa.Transparent or false
 end
+
+-- Optional integration with boatbeaker/GlassmorphicUI.
+-- This library is intentionally loaded only when the user selects Liquid Glass;
+-- Acrylic remains the default and does not require the extra model.
+local LIQUID_GLASS_MODULE = nil
+local LIQUID_GLASS_MODULE_ATTEMPTED = false
+local LIQUID_GLASS_WARNED = false
+
+local function findLiquidGlassModule()
+    if LIQUID_GLASS_MODULE then return LIQUID_GLASS_MODULE end
+    if LIQUID_GLASS_MODULE_ATTEMPTED then return nil end
+    LIQUID_GLASS_MODULE_ATTEMPTED = true
+
+    local replicatedStorage = game:GetService("ReplicatedStorage")
+    local candidate = replicatedStorage:FindFirstChild("GlassmorphicUI")
+    if candidate and candidate:IsA("Folder") then
+        local nested = candidate:FindFirstChild("GlassmorphicUI", true)
+        if nested and nested:IsA("ModuleScript") then candidate = nested else candidate = nil end
+    elseif candidate and not candidate:IsA("ModuleScript") then
+        candidate = candidate:FindFirstChild("GlassmorphicUI", true)
+        if candidate and not candidate:IsA("ModuleScript") then candidate = nil end
+    end
+
+    if not candidate then
+        candidate = replicatedStorage:FindFirstChild("GlassmorphicUI", true)
+        if candidate and not candidate:IsA("ModuleScript") then candidate = nil end
+    end
+    if candidate then
+        local ok, result = pcall(require, candidate)
+        if ok and type(result) == "table" and type(result.addGlassBackground) == "function" then
+            LIQUID_GLASS_MODULE = result
+            return result
+        elseif not LIQUID_GLASS_WARNED then
+            LIQUID_GLASS_WARNED = true
+            warn("[WindUI Liquid Glass] Found a GlassmorphicUI module but could not load its API: " .. tostring(result))
+        end
+    elseif not LIQUID_GLASS_WARNED then
+        LIQUID_GLASS_WARNED = true
+        warn("[WindUI Liquid Glass] Install the supplied GlassmorphicUI model in ReplicatedStorage to use Liquid Glass mode. Acrylic mode remains available.")
+    end
+    return nil
+end
+
+local function applyGlassAttributes(object, cfg)
+    if not object or not object:IsA("GuiObject") then return false end
+    local glass = findLiquidGlassModule()
+    if not glass then return false end
+
+    if not object:GetAttribute("WindUI_LiquidGlassApplied") then
+        pcall(function()
+            object:SetAttribute("WindUI_LiquidGlassOriginalBGTransparency", object.BackgroundTransparency)
+        end)
+        local ok, result = pcall(glass.addGlassBackground, object)
+        if not ok then
+            if not LIQUID_GLASS_WARNED then
+                LIQUID_GLASS_WARNED = true
+                warn("[WindUI Liquid Glass] Could not attach glass background: " .. tostring(result))
+            end
+            return false
+        end
+        object:SetAttribute("WindUI_LiquidGlassApplied", true)
+    end
+
+    local transparency = math.clamp((tonumber(cfg.Transparency) or 32) / 100, 0, 1)
+    local edge = math.clamp((tonumber(cfg.EdgeRefraction) or 55) / 100, 0, 1)
+    local radius = math.clamp(tonumber(cfg.CornerRadius) or 24, 0, 160)
+    local thickness = math.clamp(tonumber(cfg.GlassThickness) or 24, 1, 160)
+    local blur = math.clamp(tonumber(cfg.BlurRadius) or 12, 1, 64)
+    local tint = typeof(cfg.Tint) == "Color3" and cfg.Tint or Color3.fromRGB(205, 230, 255)
+
+    pcall(function()
+        object.BackgroundColor3 = tint
+        object:SetAttribute("Transparency", transparency)
+        object:SetAttribute("Thickness", UDim.new(0, thickness))
+        object:SetAttribute("RefractionFactor", math.clamp(tonumber(cfg.RefractionFactor) or (1 + edge * 3), 1, 4))
+        object:SetAttribute("ChromaticAberration", math.clamp(tonumber(cfg.ChromaticAberration) or (edge * 0.2), 0, 1))
+        object:SetAttribute("CornerRadius", UDim.new(0, radius))
+        object:SetAttribute("SuperEllipseFactor", 3)
+        object:SetAttribute("FresnelSize", UDim.new(0, math.floor(8 + edge * 24)))
+        object:SetAttribute("FresnelHardness", 40)
+        object:SetAttribute("FresnelIntensity", math.clamp(tonumber(cfg.BorderHighlight) or cfg.FresnelIntensity or 25, 0, 100))
+        object:SetAttribute("GlareSize", UDim.new(0, math.floor(6 + edge * 24)))
+        object:SetAttribute("GlareHardness", 40)
+        object:SetAttribute("GlareIntensity", math.clamp(tonumber(cfg.GlareIntensity) or 45, 0, 120))
+        object:SetAttribute("GlareConvergence", 90)
+        object:SetAttribute("GlareOppositeSide", 50)
+        object:SetAttribute("GlareAngle", -50)
+        object:SetAttribute("BlurRadius", UDim.new(0, blur))
+        object:SetAttribute("MaxOutputResolution", math.clamp(tonumber(cfg.MaxOutputResolution) or 512, 16, 1024))
+    end)
+
+    if cfg.PerformanceMode then
+        -- Rebuild once after a settings change, then pause continuous sampling.
+        -- This keeps the selected values visible without a permanent per-frame cost.
+        if type(glass.forceUpdate) == "function" then
+            pcall(glass.forceUpdate, object)
+        end
+        if type(glass.pauseUpdates) == "function" then
+            pcall(glass.pauseUpdates, object)
+        end
+    elseif type(glass.resumeUpdates) == "function" then
+        pcall(glass.resumeUpdates, object)
+    end
+    return true
+end
+
+local function applyLiquidGlassMode(window, cfg)
+    if not window or not window.UIElements or not window.UIElements.Main then return end
+    local main = window.UIElements.Main
+    local liquidEnabled = cfg.GlassMode == "Liquid Glass"
+
+    -- Keep the two material systems distinct: hide Acrylic while Liquid Glass is active.
+    if window.AcrylicPaint and window.AcrylicPaint.Model then
+        pcall(function()
+            window.AcrylicPaint.Model.Transparency = liquidEnabled and 1 or (window.Acrylic and 0.98 or 1)
+        end)
+    end
+
+    if liquidEnabled then
+        applyGlassAttributes(main, cfg)
+        if cfg.ElementGlass then
+            -- Only decorate existing background-like surfaces, not every interactive child.
+            -- This limits EditableImage work and helps keep mobile performance reasonable.
+            for _, obj in ipairs(main:GetDescendants()) do
+                if obj:IsA("GuiObject") and obj ~= main then
+                    local name = string.lower(obj.Name)
+                    local isBackground = name == "background" or name == "panelbackground" or name == "glassbackground"
+                    if isBackground then applyGlassAttributes(obj, cfg) end
+                end
+            end
+        end
+    end
+
+    -- Hide/show the panes when switching material modes and restore the original
+    -- Roblox background transparency when Liquid Glass is not applied to a surface.
+    for _, pane in ipairs(main:GetDescendants()) do
+        if pane:IsA("ImageLabel") and pane.Name == "GlassPane" then
+            local surface = pane.Parent
+            local isMainSurface = surface == main
+            local shouldShow = liquidEnabled and (isMainSurface or cfg.ElementGlass)
+            pane.Visible = shouldShow
+            if surface and surface:IsA("GuiObject") and not shouldShow then
+                local original = surface:GetAttribute("WindUI_LiquidGlassOriginalBGTransparency")
+                if typeof(original) == "number" then
+                    surface.BackgroundTransparency = original
+                end
+            end
+        end
+    end
+end
+
+-- Edge-lens swell also drives real refraction when GlassmorphicUI is active.
+-- Skipped in Performance Mode (the module is paused there on purpose).
+LiquidGlassFX.SwellHook = function(panel, swell)
+    local cfg = aa.LiquidGlassConfig
+    if cfg.GlassMode ~= "Liquid Glass" or cfg.PerformanceMode or cfg.LensReactive == false then return end
+    local glass = LIQUID_GLASS_MODULE
+    local object = panel.Object
+    if not glass or not object:GetAttribute("WindUI_LiquidGlassApplied") then return end
+    pcall(function()
+        local base = tonumber(cfg.RefractionFactor) or 2
+        local thickness = tonumber(cfg.GlassThickness) or 24
+        object:SetAttribute("RefractionFactor", math.clamp(base * (1 + 0.45 * swell), 1, 4))
+        object:SetAttribute("Thickness", UDim.new(0, math.clamp(thickness * (1 + 0.5 * swell), 1, 160)))
+        if type(glass.forceUpdate) == "function" then
+            glass.forceUpdate(object)
+        end
+    end)
+end
+
+-- Applies settings supported by this Wind UI build and, when installed, GlassmorphicUI.
+function aa.SetLiquidGlassSettings(az, patch)
+    local cfg = aa.LiquidGlassConfig
+    if type(patch) ~= "table" then return cfg end
+    for key, value in pairs(patch) do
+        if cfg[key] ~= nil then cfg[key] = value end
+    end
+    if patch.EdgeRefraction ~= nil and patch.RefractionFactor == nil then
+        cfg.RefractionFactor = 1 + (math.clamp(tonumber(patch.EdgeRefraction) or 55, 0, 100) / 100) * 3
+        cfg.ChromaticAberration = (math.clamp(tonumber(patch.EdgeRefraction) or 55, 0, 100) / 100) * 0.2
+    end
+
+    local window = aa.Window
+    if not window or not window.UIElements or not window.UIElements.Main then
+        return cfg
+    end
+
+    local radius = math.clamp(tonumber(cfg.CornerRadius) or 24, 0, 40)
+    local elementRadius = math.clamp(tonumber(cfg.ElementsRadius) or 14, 0, 40)
+    local transparency = math.clamp((tonumber(cfg.Transparency) or 32) / 100, 0, 1)
+    local edge = math.clamp((tonumber(cfg.EdgeRefraction) or 55) / 100, 0, 1)
+    local highlight = math.clamp((tonumber(cfg.BorderHighlight) or 60) / 100, 0, 1)
+    local tint = typeof(cfg.Tint) == "Color3" and cfg.Tint or Color3.fromRGB(205, 230, 255)
+
+    window.UICorner = radius
+    window.Radius = radius
+    window.ElementConfig = window.ElementConfig or {}
+    window.ElementConfig.UICorner = elementRadius
+
+    -- The window / content panel are squircle sprites: keep them in sync with the radius
+    -- so the reflection rim and the acrylic layer meet the corners exactly.
+    do
+        local function setSquircle(label, r)
+            if label and label:IsA("ImageLabel") then
+                label.SliceScale = math.max(r / 310, 0.0001)
+            end
+        end
+        setSquircle(window.UIElements.Main:FindFirstChild("Background"), radius)
+        local bar = window.UIElements.MainBar
+        if bar then
+            setSquircle(bar:FindFirstChild("Background"), math.max(radius - (window.UIPadding or 14) / 2, 0))
+        end
+    end
+
+    -- Keep the existing acrylic material on the window's acrylic model.
+    if window.AcrylicPaint and window.AcrylicPaint.Model then
+        local model = window.AcrylicPaint.Model
+        pcall(function()
+            model.Color = tint
+            model.Material = cfg.PerformanceMode and Enum.Material.SmoothPlastic or Enum.Material.Glass
+            -- The source's acrylic part is intentionally almost transparent.
+            model.Transparency = cfg.Enabled and (0.985 - transparency * 0.08) or 1
+        end)
+    end
+
+    -- Update existing rounded UI and glass-like background/outline surfaces.
+    -- Do not recolor icons or text, and avoid creating per-frame effects.
+    for _, obj in ipairs(window.UIElements.Main:GetDescendants()) do
+        if obj:IsA("UICorner") then
+            local parentName = obj.Parent and obj.Parent.Name or ""
+            if parentName == "Background" or parentName == "Main" or parentName == "Topbar" then
+                obj.CornerRadius = UDim.new(0, radius)
+            elseif cfg.ElementGlass then
+                obj.CornerRadius = UDim.new(0, elementRadius)
+            end
+        elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+            local name = string.lower(obj.Name)
+            if string.find(name, "outline", 1, true) or string.find(name, "border", 1, true) then
+                obj.ImageTransparency = 1 - highlight * 0.55
+                if cfg.ElementGlass then obj.ImageColor3 = tint end
+            elseif string.find(name, "background", 1, true) then
+                if cfg.ElementGlass then
+                    obj.ImageColor3 = tint
+                    obj.ImageTransparency = math.clamp(0.94 - edge * 0.18 + transparency * 0.05, 0.70, 0.99)
+                end
+            end
+        elseif obj:IsA("Frame") and cfg.ElementGlass then
+            local name = string.lower(obj.Name)
+            if name == "background" or name == "glass" then
+                obj.BackgroundColor3 = tint
+                obj.BackgroundTransparency = math.clamp(0.92 + transparency * 0.07, 0.90, 0.99)
+            end
+        end
+    end
+    applyLiquidGlassMode(window, cfg)
+    LiquidGlassFX.Refresh()
+    return cfg
+end
+function aa.GetLiquidGlassSettings(az)
+    return aa.LiquidGlassConfig
+end
+function aa.ResetLiquidGlassSettings(az)
+    local cfg = aa.LiquidGlassConfig
+    for key, value in pairs(aa.LiquidGlassDefaults) do
+        cfg[key] = value
+    end
+    return aa:SetLiquidGlassSettings({})
+end
+-- Attach the continuous reflection + edge lens to any extra panel (dialog, dropdown, popup...).
+function aa.ApplyLiquidGlass(az, object, opts)
+    return LiquidGlassFX.Attach(object, opts)
+end
+function aa.RemoveLiquidGlass(az, object)
+    LiquidGlassFX.Detach(object)
+end
 function aa.GetWindowSize(az)
     return aa.Window.UIElements.Main.Size
 end
@@ -12427,11 +13221,10 @@ end
 function aa.ToggleAcrylic(az, aA)
     if aa.Window and aa.Window.AcrylicPaint and aa.Window.AcrylicPaint.Model then
         aa.Window.Acrylic = aA
-        aa.Window.AcrylicPaint.Model.Transparency = aA and 0.98 or 1
-        if aA then
-            au.Enable()
-        else
-            au.Disable()
+        local liquidActive = aa.LiquidGlassConfig and aa.LiquidGlassConfig.GlassMode == "Liquid Glass"
+        aa.Window.AcrylicPaint.Model.Transparency = (aA and not liquidActive) and 0.98 or 1
+        if aa.LiquidGlassConfig.UseGlobalDepthOfFieldBlur then
+            if aA then au.Enable() else au.Disable() end
         end
     end
 end
@@ -12573,8 +13366,16 @@ function aa.CreateWindow(az, aA)
     local h = aB(aA)
     aa.Transparent = aA.Transparent
     aa.Window = h
-    if aA.Acrylic then
+    if aA.Acrylic and aa.LiquidGlassConfig.UseGlobalDepthOfFieldBlur then
         au.init()
+    end
+
+    -- Reflection + edge lens on the window, then apply the editable defaults.
+    -- The "Liquid Glass" settings tab is intentionally NOT created here any more:
+    -- build it in your own script (see example.lua) with WindUI:SetLiquidGlassSettings.
+    LiquidGlassFX.AttachWindow(h)
+    if aa.LiquidGlassConfig.Enabled then
+        aa:SetLiquidGlassSettings({})
     end
     return h
 end
