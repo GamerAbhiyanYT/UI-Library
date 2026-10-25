@@ -12253,11 +12253,13 @@ type ConfigType__DARKLUA_TYPE_a = {
 -- Liquid Glass configuration (editable defaults). Change these values before CreateWindow.
 local LIQUID_GLASS_DEFAULTS = {
     Enabled = true,
-    CreateSettingsTab = true,
+    CreateSettingsTab = false,
     UseGlobalDepthOfFieldBlur = false, -- Roblox DepthOfField is scene-wide, not clipped to a UI frame
     Transparency = 32,       -- 0 = opaque, 100 = most transparent
     EdgeRefraction = 55,     -- visual edge/glass emphasis (approximation)
     BorderHighlight = 60,    -- outline visibility
+    AcrylicReflection = true, -- subtle specular highlight on UI surfaces
+    ReflectionStrength = 55,  -- 0-100
     CornerRadius = 24,
     ElementsRadius = 14,
     ElementGlass = true,
@@ -12590,6 +12592,57 @@ local function applyLiquidGlassMode(window, cfg)
     end
 end
 
+-- Apply a lightweight curved specular rim to visible UI surfaces. This is a UIGradient
+-- highlight (not a physically accurate screen-space reflection), and does not move elements.
+local function applyAcrylicReflections(root, cfg, mainRadius, elementRadius)
+    if not root then return end
+    local strength = math.clamp(tonumber(cfg.ReflectionStrength) or 55, 0, 100) / 100
+    local enabled = cfg.AcrylicReflection ~= false and cfg.Enabled ~= false
+    local function decorate(obj, isMain)
+        if not obj or not obj:IsA("GuiObject") then return end
+        local class = obj.ClassName
+        if class ~= "Frame" and class ~= "ScrollingFrame" and class ~= "ImageLabel" and class ~= "ImageButton" and class ~= "TextButton" and class ~= "TextBox" then return end
+        local n = string.lower(obj.Name)
+        local isSurface = isMain or string.find(n, "background", 1, true) or string.find(n, "panel", 1, true) or string.find(n, "container", 1, true) or string.find(n, "button", 1, true) or string.find(n, "card", 1, true) or string.find(n, "tab", 1, true) or string.find(n, "dropdown", 1, true) or string.find(n, "window", 1, true)
+        if not isSurface then return end
+        local corner = obj:FindFirstChild("WindUI_AcrylicReflectionCorner")
+        if not corner then
+            corner = Instance.new("UICorner")
+            corner.Name = "WindUI_AcrylicReflectionCorner"
+            corner.Parent = obj
+        end
+        corner.CornerRadius = UDim.new(0, isMain and mainRadius or elementRadius)
+        local stroke = obj:FindFirstChild("WindUI_AcrylicReflectionStroke")
+        if not stroke then
+            stroke = Instance.new("UIStroke")
+            stroke.Name = "WindUI_AcrylicReflectionStroke"
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            stroke.LineJoinMode = Enum.LineJoinMode.Round
+            stroke.Thickness = 1
+            stroke.Parent = obj
+            local gradient = Instance.new("UIGradient")
+            gradient.Name = "WindUI_AcrylicReflectionGradient"
+            gradient.Rotation = 35
+            gradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+                ColorSequenceKeypoint.new(0.48, Color3.fromRGB(190, 220, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+            })
+            gradient.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.20),
+                NumberSequenceKeypoint.new(0.45, 0.88),
+                NumberSequenceKeypoint.new(1, 0.28),
+            })
+            gradient.Parent = stroke
+        end
+        stroke.Enabled = enabled and strength > 0
+        stroke.Transparency = 1 - (strength * 0.62)
+        stroke.Thickness = 0.7 + strength * 1.1
+    end
+    decorate(root, true)
+    for _, obj in ipairs(root:GetDescendants()) do decorate(obj, false) end
+end
+
 -- Applies settings supported by this Wind UI build and, when installed, GlassmorphicUI.
 function aa.SetLiquidGlassSettings(az, patch)
     local cfg = aa.LiquidGlassConfig
@@ -12659,6 +12712,7 @@ function aa.SetLiquidGlassSettings(az, patch)
             end
         end
     end
+    applyAcrylicReflections(window.UIElements.Main, cfg, radius, elementRadius)
     applyLiquidGlassMode(window, cfg)
     return cfg
 end
@@ -12826,125 +12880,9 @@ function aa.CreateWindow(az, aA)
         au.init()
     end
 
-    -- Apply the editable defaults and optionally create a live settings tab.
+    -- Apply visual defaults only. Demo/settings tabs live in the separate example script.
     if aa.LiquidGlassConfig.Enabled then
         aa:SetLiquidGlassSettings({})
-        if aa.LiquidGlassConfig.CreateSettingsTab and h and h.Tab then
-            local ok, settingsTab = pcall(function()
-                return h:Tab({ Title = "Liquid Glass", Icon = "sliders-horizontal" })
-            end)
-            if ok and settingsTab then
-                local function apply(key, value)
-                    aa:SetLiquidGlassSettings({ [key] = value })
-                end
-                pcall(function()
-                    settingsTab:Paragraph({
-                        Title = "Liquid Glass",
-                        Desc = "Acrylic and Liquid Glass are separate modes. Liquid Glass uses the supplied GlassmorphicUI module for refractive edges and backdrop frost; install that model in ReplicatedStorage first.",
-                    })
-                    settingsTab:Toggle({
-                        Title = "Use Liquid Glass instead of Acrylic",
-                        Desc = "Requires the GlassmorphicUI model in ReplicatedStorage",
-                        Value = aa.LiquidGlassConfig.GlassMode == "Liquid Glass",
-                        Callback = function(value)
-                            apply("GlassMode", value and "Liquid Glass" or "Acrylic")
-                        end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Backdrop Blur Radius",
-                        Desc = "GlassmorphicUI frost radius in pixels",
-                        Value = { Min = 1, Max = 48, Default = aa.LiquidGlassConfig.BlurRadius },
-                        Step = 1,
-                        Callback = function(value) apply("BlurRadius", value) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Glass Thickness",
-                        Desc = "Width of the refracting edge band in pixels",
-                        Value = { Min = 1, Max = 80, Default = aa.LiquidGlassConfig.GlassThickness },
-                        Step = 1,
-                        Callback = function(value) apply("GlassThickness", value) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Refraction Factor",
-                        Desc = "Strength of the edge lensing (1 disables refraction)",
-                        Value = { Min = 1, Max = 4, Default = aa.LiquidGlassConfig.RefractionFactor },
-                        Step = 0.1,
-                        Callback = function(value) apply("RefractionFactor", value) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Chromatic Aberration",
-                        Desc = "Color separation at the glass rim",
-                        Value = { Min = 0, Max = 100, Default = aa.LiquidGlassConfig.ChromaticAberration * 100 },
-                        Step = 1,
-                        Callback = function(value) apply("ChromaticAberration", value / 100) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Glare Intensity",
-                        Desc = "Brightness of glass edge reflections",
-                        Value = { Min = 0, Max = 120, Default = aa.LiquidGlassConfig.GlareIntensity },
-                        Step = 1,
-                        Callback = function(value) apply("GlareIntensity", value) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Glass Transparency",
-                        Desc = "Adjust the glass surface visibility",
-                        Value = { Min = 0, Max = 100, Default = aa.LiquidGlassConfig.Transparency },
-                        Step = 1,
-                        Callback = function(value) apply("Transparency", value) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Edge Refraction",
-                        Desc = "Adjust the strength of the edge-glass treatment",
-                        Value = { Min = 0, Max = 100, Default = aa.LiquidGlassConfig.EdgeRefraction },
-                        Step = 1,
-                        Callback = function(value)
-                            aa:SetLiquidGlassSettings({ EdgeRefraction = value, RefractionFactor = 1 + (value / 100) * 3, ChromaticAberration = (value / 100) * 0.2 })
-                        end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Border Highlight",
-                        Desc = "Adjust the outline visibility",
-                        Value = { Min = 0, Max = 100, Default = aa.LiquidGlassConfig.BorderHighlight },
-                        Step = 1,
-                        Callback = function(value) apply("BorderHighlight", value) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Window Corner Radius",
-                        Desc = "Roundness of the window background",
-                        Value = { Min = 0, Max = 40, Default = aa.LiquidGlassConfig.CornerRadius },
-                        Step = 1,
-                        Callback = function(value) apply("CornerRadius", value) end,
-                    })
-                    settingsTab:Slider({
-                        Title = "Element Corner Radius",
-                        Desc = "Roundness of element corners",
-                        Value = { Min = 0, Max = 40, Default = aa.LiquidGlassConfig.ElementsRadius },
-                        Step = 1,
-                        Callback = function(value) apply("ElementsRadius", value) end,
-                    })
-                    settingsTab:Toggle({
-                        Title = "Element Glass",
-                        Desc = "Apply glass tint and rounded styling to matching element surfaces",
-                        Value = aa.LiquidGlassConfig.ElementGlass,
-                        Callback = function(value) apply("ElementGlass", value) end,
-                    })
-                    settingsTab:Toggle({
-                        Title = "Performance Mode",
-                        Desc = "Keep the glass styling static; avoids animated effects",
-                        Value = aa.LiquidGlassConfig.PerformanceMode,
-                        Callback = function(value) apply("PerformanceMode", value) end,
-                    })
-                    settingsTab:Colorpicker({
-                        Title = "Glass Tint",
-                        Desc = "Choose the glass accent color",
-                        Default = aa.LiquidGlassConfig.Tint,
-                        Callback = function(value) apply("Tint", value) end,
-                    })
-                end)
-            else
-                warn("[WindUI Liquid Glass] Could not create settings tab: " .. tostring(settingsTab))
-            end
-        end
     end
     return h
 end
