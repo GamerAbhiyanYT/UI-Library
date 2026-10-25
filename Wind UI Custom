@@ -411,7 +411,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 BackgroundTransparency = 0,
                 Hover = "Text",
                 PanelBackground = "White",
-                PanelBackgroundTransparency = 0.95,
+                PanelBackgroundTransparency = 0.78,
                 WindowBackground = "Background",
                 WindowShadow = "Black",
                 WindowTopbarTitle = "Text",
@@ -3153,7 +3153,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     LabelBackground = Color3.fromHex "#000000",
                     LabelBackgroundTransparency = 0.83,
                     ElementBackground = Color3.fromHex "#2A2A2C",
-                    ElementBackgroundTransparency = 0,
+                    ElementBackgroundTransparency = 0.42,
                 },
                 Light = {
                     Name = "Light",
@@ -10575,13 +10575,13 @@ type ConfigType__DARKLUA_TYPE_a = {
                 MaxSize = av.MaxSize or Vector2.new(850, 560),
                 TopBarButtonIconSize = av.TopBarButtonIconSize,
                 ToggleKey = av.ToggleKey,
-                ElementsRadius = av.ElementsRadius,
-                Radius = av.Radius or 16,
-                Transparent = av.Transparent or false,
+                ElementsRadius = av.ElementsRadius or 12, -- Rounded controls by default
+                Radius = av.Radius or 24, -- Softer rounded window corners
+                Transparent = av.Transparent ~= false, -- Glass transparency enabled by default
                 HideSearchBar = av.HideSearchBar ~= false,
                 ScrollBarEnabled = av.ScrollBarEnabled or false,
                 SideBarWidth = av.SideBarWidth or 200,
-                Acrylic = av.Acrylic or false,
+                Acrylic = av.Acrylic ~= false, -- Liquid Glass: acrylic blur enabled by default
                 NewElements = av.NewElements or false,
                 IgnoreAlerts = av.IgnoreAlerts or false,
                 HidePanelBackground = av.HidePanelBackground or false,
