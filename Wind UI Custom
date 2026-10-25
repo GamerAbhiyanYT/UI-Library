@@ -411,7 +411,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 BackgroundTransparency = 0,
                 Hover = "Text",
                 PanelBackground = "White",
-                PanelBackgroundTransparency = 0.95,
+                PanelBackgroundTransparency = 0.78,
                 WindowBackground = "Background",
                 WindowShadow = "Black",
                 WindowTopbarTitle = "Text",
@@ -3153,7 +3153,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     LabelBackground = Color3.fromHex "#000000",
                     LabelBackgroundTransparency = 0.83,
                     ElementBackground = Color3.fromHex "#2A2A2C",
-                    ElementBackgroundTransparency = 0,
+                    ElementBackgroundTransparency = 0.42,
                 },
                 Light = {
                     Name = "Light",
@@ -10575,13 +10575,13 @@ type ConfigType__DARKLUA_TYPE_a = {
                 MaxSize = av.MaxSize or Vector2.new(850, 560),
                 TopBarButtonIconSize = av.TopBarButtonIconSize,
                 ToggleKey = av.ToggleKey,
-                ElementsRadius = av.ElementsRadius,
-                Radius = av.Radius or 16,
-                Transparent = av.Transparent or false,
+                ElementsRadius = av.ElementsRadius or 12, -- Rounded controls by default
+                Radius = av.Radius or 24, -- Softer rounded window corners
+                Transparent = av.Transparent ~= false, -- Glass transparency enabled by default
                 HideSearchBar = av.HideSearchBar ~= false,
                 ScrollBarEnabled = av.ScrollBarEnabled or false,
                 SideBarWidth = av.SideBarWidth or 200,
-                Acrylic = av.Acrylic or false,
+                Acrylic = av.Acrylic ~= false, -- Liquid Glass: acrylic blur enabled by default
                 NewElements = av.NewElements or false,
                 IgnoreAlerts = av.IgnoreAlerts or false,
                 HidePanelBackground = av.HidePanelBackground or false,
@@ -12250,36 +12250,7 @@ type ConfigType__DARKLUA_TYPE_a = {
             end
             return aw
         end end end
--- Liquid Glass configuration (editable defaults). Change these values before CreateWindow.
-local LIQUID_GLASS_DEFAULTS = {
-    Enabled = true,
-    CreateSettingsTab = false,
-    UseGlobalDepthOfFieldBlur = false, -- Roblox DepthOfField is scene-wide, not clipped to a UI frame
-    Transparency = 32,       -- 0 = opaque, 100 = most transparent
-    EdgeRefraction = 55,     -- visual edge/glass emphasis (approximation)
-    BorderHighlight = 60,    -- outline visibility
-    AcrylicReflection = true, -- subtle specular highlight on UI surfaces
-    ReflectionStrength = 55,  -- 0-100
-    CornerRadius = 24,
-    ElementsRadius = 14,
-    ElementGlass = true,
-    PerformanceMode = true,
-    Tint = Color3.fromRGB(205, 230, 255),
-
-    -- Liquid Glass is a separate material mode from Wind UI Acrylic.
-    -- Requires the uploaded GlassmorphicUI model to be installed in ReplicatedStorage.
-    GlassMode = "Acrylic", -- "Acrylic" or "Liquid Glass"
-    BlurRadius = 12,         -- pixels; 1 is effectively unblurred
-    GlassThickness = 24,    -- edge refraction band, pixels
-    RefractionFactor = 2.1, -- 1-4; 1 disables refraction
-    ChromaticAberration = 0.12, -- 0-1
-    FresnelIntensity = 25,   -- 0-100
-    GlareIntensity = 45,     -- 0-120
-    MaxOutputResolution = 512, -- lower value is friendlier to mobile devices
-}
-
 local aa = {
-    LiquidGlassConfig = LIQUID_GLASS_DEFAULTS,
     Window = nil,
     Theme = nil,
     Creator = a.load 'd',
@@ -12441,281 +12412,6 @@ end
 function aa.GetTransparency(az)
     return aa.Transparent or false
 end
-
--- Optional integration with boatbeaker/GlassmorphicUI.
--- This library is intentionally loaded only when the user selects Liquid Glass;
--- Acrylic remains the default and does not require the extra model.
-local LIQUID_GLASS_MODULE = nil
-local LIQUID_GLASS_MODULE_ATTEMPTED = false
-local LIQUID_GLASS_WARNED = false
-
-local function findLiquidGlassModule()
-    if LIQUID_GLASS_MODULE then return LIQUID_GLASS_MODULE end
-    if LIQUID_GLASS_MODULE_ATTEMPTED then return nil end
-    LIQUID_GLASS_MODULE_ATTEMPTED = true
-
-    local replicatedStorage = game:GetService("ReplicatedStorage")
-    local candidate = replicatedStorage:FindFirstChild("GlassmorphicUI")
-    if candidate and candidate:IsA("Folder") then
-        local nested = candidate:FindFirstChild("GlassmorphicUI", true)
-        if nested and nested:IsA("ModuleScript") then candidate = nested else candidate = nil end
-    elseif candidate and not candidate:IsA("ModuleScript") then
-        candidate = candidate:FindFirstChild("GlassmorphicUI", true)
-        if candidate and not candidate:IsA("ModuleScript") then candidate = nil end
-    end
-
-    if not candidate then
-        candidate = replicatedStorage:FindFirstChild("GlassmorphicUI", true)
-        if candidate and not candidate:IsA("ModuleScript") then candidate = nil end
-    end
-    if candidate then
-        local ok, result = pcall(require, candidate)
-        if ok and type(result) == "table" and type(result.addGlassBackground) == "function" then
-            LIQUID_GLASS_MODULE = result
-            return result
-        elseif not LIQUID_GLASS_WARNED then
-            LIQUID_GLASS_WARNED = true
-            warn("[WindUI Liquid Glass] Found a GlassmorphicUI module but could not load its API: " .. tostring(result))
-        end
-    elseif not LIQUID_GLASS_WARNED then
-        LIQUID_GLASS_WARNED = true
-        warn("[WindUI Liquid Glass] Install the supplied GlassmorphicUI model in ReplicatedStorage to use Liquid Glass mode. Acrylic mode remains available.")
-    end
-    return nil
-end
-
-local function applyGlassAttributes(object, cfg)
-    if not object or not object:IsA("GuiObject") then return false end
-    local glass = findLiquidGlassModule()
-    if not glass then return false end
-
-    if not object:GetAttribute("WindUI_LiquidGlassApplied") then
-        pcall(function()
-            object:SetAttribute("WindUI_LiquidGlassOriginalBGTransparency", object.BackgroundTransparency)
-        end)
-        local ok, result = pcall(glass.addGlassBackground, object)
-        if not ok then
-            if not LIQUID_GLASS_WARNED then
-                LIQUID_GLASS_WARNED = true
-                warn("[WindUI Liquid Glass] Could not attach glass background: " .. tostring(result))
-            end
-            return false
-        end
-        object:SetAttribute("WindUI_LiquidGlassApplied", true)
-    end
-
-    local transparency = math.clamp((tonumber(cfg.Transparency) or 32) / 100, 0, 1)
-    local edge = math.clamp((tonumber(cfg.EdgeRefraction) or 55) / 100, 0, 1)
-    local radius = math.clamp(tonumber(cfg.CornerRadius) or 24, 0, 160)
-    local thickness = math.clamp(tonumber(cfg.GlassThickness) or 24, 1, 160)
-    local blur = math.clamp(tonumber(cfg.BlurRadius) or 12, 1, 64)
-    local tint = typeof(cfg.Tint) == "Color3" and cfg.Tint or Color3.fromRGB(205, 230, 255)
-
-    pcall(function()
-        object.BackgroundColor3 = tint
-        object:SetAttribute("Transparency", transparency)
-        object:SetAttribute("Thickness", UDim.new(0, thickness))
-        object:SetAttribute("RefractionFactor", math.clamp(tonumber(cfg.RefractionFactor) or (1 + edge * 3), 1, 4))
-        object:SetAttribute("ChromaticAberration", math.clamp(tonumber(cfg.ChromaticAberration) or (edge * 0.2), 0, 1))
-        object:SetAttribute("CornerRadius", UDim.new(0, radius))
-        object:SetAttribute("SuperEllipseFactor", 3)
-        object:SetAttribute("FresnelSize", UDim.new(0, math.floor(8 + edge * 24)))
-        object:SetAttribute("FresnelHardness", 40)
-        object:SetAttribute("FresnelIntensity", math.clamp(tonumber(cfg.BorderHighlight) or cfg.FresnelIntensity or 25, 0, 100))
-        object:SetAttribute("GlareSize", UDim.new(0, math.floor(6 + edge * 24)))
-        object:SetAttribute("GlareHardness", 40)
-        object:SetAttribute("GlareIntensity", math.clamp(tonumber(cfg.GlareIntensity) or 45, 0, 120))
-        object:SetAttribute("GlareConvergence", 90)
-        object:SetAttribute("GlareOppositeSide", 50)
-        object:SetAttribute("GlareAngle", -50)
-        object:SetAttribute("BlurRadius", UDim.new(0, blur))
-        object:SetAttribute("MaxOutputResolution", math.clamp(tonumber(cfg.MaxOutputResolution) or 512, 16, 1024))
-    end)
-
-    if cfg.PerformanceMode then
-        -- Rebuild once after a settings change, then pause continuous sampling.
-        -- This keeps the selected values visible without a permanent per-frame cost.
-        if type(glass.forceUpdate) == "function" then
-            pcall(glass.forceUpdate, object)
-        end
-        if type(glass.pauseUpdates) == "function" then
-            pcall(glass.pauseUpdates, object)
-        end
-    elseif type(glass.resumeUpdates) == "function" then
-        pcall(glass.resumeUpdates, object)
-    end
-    return true
-end
-
-local function applyLiquidGlassMode(window, cfg)
-    if not window or not window.UIElements or not window.UIElements.Main then return end
-    local main = window.UIElements.Main
-    local liquidEnabled = cfg.GlassMode == "Liquid Glass"
-
-    -- Keep the two material systems distinct: hide Acrylic while Liquid Glass is active.
-    if window.AcrylicPaint and window.AcrylicPaint.Model then
-        pcall(function()
-            window.AcrylicPaint.Model.Transparency = liquidEnabled and 1 or (window.Acrylic and 0.98 or 1)
-        end)
-    end
-
-    if liquidEnabled then
-        applyGlassAttributes(main, cfg)
-        if cfg.ElementGlass then
-            -- Only decorate existing background-like surfaces, not every interactive child.
-            -- This limits EditableImage work and helps keep mobile performance reasonable.
-            for _, obj in ipairs(main:GetDescendants()) do
-                if obj:IsA("GuiObject") and obj ~= main then
-                    local name = string.lower(obj.Name)
-                    local isBackground = name == "background" or name == "panelbackground" or name == "glassbackground"
-                    if isBackground then applyGlassAttributes(obj, cfg) end
-                end
-            end
-        end
-    end
-
-    -- Hide/show the panes when switching material modes and restore the original
-    -- Roblox background transparency when Liquid Glass is not applied to a surface.
-    for _, pane in ipairs(main:GetDescendants()) do
-        if pane:IsA("ImageLabel") and pane.Name == "GlassPane" then
-            local surface = pane.Parent
-            local isMainSurface = surface == main
-            local shouldShow = liquidEnabled and (isMainSurface or cfg.ElementGlass)
-            pane.Visible = shouldShow
-            if surface and surface:IsA("GuiObject") and not shouldShow then
-                local original = surface:GetAttribute("WindUI_LiquidGlassOriginalBGTransparency")
-                if typeof(original) == "number" then
-                    surface.BackgroundTransparency = original
-                end
-            end
-        end
-    end
-end
-
--- Apply a lightweight curved specular rim to visible UI surfaces. This is a UIGradient
--- highlight (not a physically accurate screen-space reflection), and does not move elements.
-local function applyAcrylicReflections(root, cfg, mainRadius, elementRadius)
-    if not root then return end
-    local strength = math.clamp(tonumber(cfg.ReflectionStrength) or 55, 0, 100) / 100
-    local enabled = cfg.AcrylicReflection ~= false and cfg.Enabled ~= false
-    local function decorate(obj, isMain)
-        if not obj or not obj:IsA("GuiObject") then return end
-        local class = obj.ClassName
-        if class ~= "Frame" and class ~= "ScrollingFrame" and class ~= "ImageLabel" and class ~= "ImageButton" and class ~= "TextButton" and class ~= "TextBox" then return end
-        local n = string.lower(obj.Name)
-        local isSurface = isMain or string.find(n, "background", 1, true) or string.find(n, "panel", 1, true) or string.find(n, "container", 1, true) or string.find(n, "button", 1, true) or string.find(n, "card", 1, true) or string.find(n, "tab", 1, true) or string.find(n, "dropdown", 1, true) or string.find(n, "window", 1, true)
-        if not isSurface then return end
-        local corner = obj:FindFirstChild("WindUI_AcrylicReflectionCorner")
-        if not corner then
-            corner = Instance.new("UICorner")
-            corner.Name = "WindUI_AcrylicReflectionCorner"
-            corner.Parent = obj
-        end
-        corner.CornerRadius = UDim.new(0, isMain and mainRadius or elementRadius)
-        local stroke = obj:FindFirstChild("WindUI_AcrylicReflectionStroke")
-        if not stroke then
-            stroke = Instance.new("UIStroke")
-            stroke.Name = "WindUI_AcrylicReflectionStroke"
-            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-            stroke.LineJoinMode = Enum.LineJoinMode.Round
-            stroke.Thickness = 1
-            stroke.Parent = obj
-            local gradient = Instance.new("UIGradient")
-            gradient.Name = "WindUI_AcrylicReflectionGradient"
-            gradient.Rotation = 35
-            gradient.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-                ColorSequenceKeypoint.new(0.48, Color3.fromRGB(190, 220, 255)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
-            })
-            gradient.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.20),
-                NumberSequenceKeypoint.new(0.45, 0.88),
-                NumberSequenceKeypoint.new(1, 0.28),
-            })
-            gradient.Parent = stroke
-        end
-        stroke.Enabled = enabled and strength > 0
-        stroke.Transparency = 1 - (strength * 0.62)
-        stroke.Thickness = 0.7 + strength * 1.1
-    end
-    decorate(root, true)
-    for _, obj in ipairs(root:GetDescendants()) do decorate(obj, false) end
-end
-
--- Applies settings supported by this Wind UI build and, when installed, GlassmorphicUI.
-function aa.SetLiquidGlassSettings(az, patch)
-    local cfg = aa.LiquidGlassConfig
-    if type(patch) ~= "table" then return cfg end
-    for key, value in pairs(patch) do
-        if cfg[key] ~= nil then cfg[key] = value end
-    end
-    if patch.EdgeRefraction ~= nil and patch.RefractionFactor == nil then
-        cfg.RefractionFactor = 1 + (math.clamp(tonumber(patch.EdgeRefraction) or 55, 0, 100) / 100) * 3
-        cfg.ChromaticAberration = (math.clamp(tonumber(patch.EdgeRefraction) or 55, 0, 100) / 100) * 0.2
-    end
-
-    local window = aa.Window
-    if not window or not window.UIElements or not window.UIElements.Main then
-        return cfg
-    end
-
-    local radius = math.clamp(tonumber(cfg.CornerRadius) or 24, 0, 40)
-    local elementRadius = math.clamp(tonumber(cfg.ElementsRadius) or 14, 0, 40)
-    local transparency = math.clamp((tonumber(cfg.Transparency) or 32) / 100, 0, 1)
-    local edge = math.clamp((tonumber(cfg.EdgeRefraction) or 55) / 100, 0, 1)
-    local highlight = math.clamp((tonumber(cfg.BorderHighlight) or 60) / 100, 0, 1)
-    local tint = typeof(cfg.Tint) == "Color3" and cfg.Tint or Color3.fromRGB(205, 230, 255)
-
-    window.UICorner = radius
-    window.Radius = radius
-    window.ElementConfig = window.ElementConfig or {}
-    window.ElementConfig.UICorner = elementRadius
-
-    -- Keep the existing acrylic material on the window's acrylic model.
-    if window.AcrylicPaint and window.AcrylicPaint.Model then
-        local model = window.AcrylicPaint.Model
-        pcall(function()
-            model.Color = tint
-            model.Material = cfg.PerformanceMode and Enum.Material.SmoothPlastic or Enum.Material.Glass
-            -- The source's acrylic part is intentionally almost transparent.
-            model.Transparency = cfg.Enabled and (0.985 - transparency * 0.08) or 1
-        end)
-    end
-
-    -- Update existing rounded UI and glass-like background/outline surfaces.
-    -- Do not recolor icons or text, and avoid creating per-frame effects.
-    for _, obj in ipairs(window.UIElements.Main:GetDescendants()) do
-        if obj:IsA("UICorner") then
-            local parentName = obj.Parent and obj.Parent.Name or ""
-            if parentName == "Background" or parentName == "Main" or parentName == "Topbar" then
-                obj.CornerRadius = UDim.new(0, radius)
-            elseif cfg.ElementGlass then
-                obj.CornerRadius = UDim.new(0, elementRadius)
-            end
-        elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
-            local name = string.lower(obj.Name)
-            if string.find(name, "outline", 1, true) or string.find(name, "border", 1, true) then
-                obj.ImageTransparency = 1 - highlight * 0.55
-                if cfg.ElementGlass then obj.ImageColor3 = tint end
-            elseif string.find(name, "background", 1, true) then
-                if cfg.ElementGlass then
-                    obj.ImageColor3 = tint
-                    obj.ImageTransparency = math.clamp(0.94 - edge * 0.18 + transparency * 0.05, 0.70, 0.99)
-                end
-            end
-        elseif obj:IsA("Frame") and cfg.ElementGlass then
-            local name = string.lower(obj.Name)
-            if name == "background" or name == "glass" then
-                obj.BackgroundColor3 = tint
-                obj.BackgroundTransparency = math.clamp(0.92 + transparency * 0.07, 0.90, 0.99)
-            end
-        end
-    end
-    applyAcrylicReflections(window.UIElements.Main, cfg, radius, elementRadius)
-    applyLiquidGlassMode(window, cfg)
-    return cfg
-end
 function aa.GetWindowSize(az)
     return aa.Window.UIElements.Main.Size
 end
@@ -12731,10 +12427,11 @@ end
 function aa.ToggleAcrylic(az, aA)
     if aa.Window and aa.Window.AcrylicPaint and aa.Window.AcrylicPaint.Model then
         aa.Window.Acrylic = aA
-        local liquidActive = aa.LiquidGlassConfig and aa.LiquidGlassConfig.GlassMode == "Liquid Glass"
-        aa.Window.AcrylicPaint.Model.Transparency = (aA and not liquidActive) and 0.98 or 1
-        if aa.LiquidGlassConfig.UseGlobalDepthOfFieldBlur then
-            if aA then au.Enable() else au.Disable() end
+        aa.Window.AcrylicPaint.Model.Transparency = aA and 0.98 or 1
+        if aA then
+            au.Enable()
+        else
+            au.Disable()
         end
     end
 end
@@ -12876,13 +12573,8 @@ function aa.CreateWindow(az, aA)
     local h = aB(aA)
     aa.Transparent = aA.Transparent
     aa.Window = h
-    if aA.Acrylic and aa.LiquidGlassConfig.UseGlobalDepthOfFieldBlur then
+    if aA.Acrylic then
         au.init()
-    end
-
-    -- Apply visual defaults only. Demo/settings tabs live in the separate example script.
-    if aa.LiquidGlassConfig.Enabled then
-        aa:SetLiquidGlassSettings({})
     end
     return h
 end
