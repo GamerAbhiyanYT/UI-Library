@@ -12728,6 +12728,26 @@ do
             }),
         })
 
+        -- Specular core: highlight tipis di tengah sheen agar pantulan lebih tajam.
+        L.SheenCore = new("Frame", {
+            Name = "SheenCore",
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = Color3.new(1, 1, 1),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Rotation = 24,
+            Parent = clipRoot,
+        }, {
+            new("UIGradient", {
+                Transparency = NumberSequence.new {
+                    NumberSequenceKeypoint.new(0, 1),
+                    NumberSequenceKeypoint.new(0.42, 0.15),
+                    NumberSequenceKeypoint.new(0.58, 0.15),
+                    NumberSequenceKeypoint.new(1, 1),
+                },
+            }),
+        })
+
         -- Outline (UIStroke + gradient yang berputar mengikuti cahaya)
         L.Outline = new("Frame", {
             Name = "LGOutline_" .. tostring(zOutline),
@@ -12755,6 +12775,27 @@ do
                 NumberSequenceKeypoint.new(1, 0),
             },
             Parent = L.Stroke,
+        })
+
+        -- Fresnel rim: lapisan tepi kedua untuk kesan kaca yang lebih reflektif.
+        L.Fresnel = new("UIStroke", {
+            Thickness = 3.2,
+            Color = Color3.new(1, 1, 1),
+            Transparency = 1,
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            LineJoinMode = Enum.LineJoinMode.Round,
+            Parent = L.Outline,
+        })
+        L.FresnelGrad = new("UIGradient", {
+            Rotation = 0,
+            Transparency = NumberSequence.new {
+                NumberSequenceKeypoint.new(0, 0.94),
+                NumberSequenceKeypoint.new(0.22, 0.35),
+                NumberSequenceKeypoint.new(0.5, 1),
+                NumberSequenceKeypoint.new(0.78, 0.25),
+                NumberSequenceKeypoint.new(1, 0.94),
+            },
+            Parent = L.Fresnel,
         })
 
         L.px, L.py, L.angle, L.intensity, L.facing = 0.5, 0.5, 0, 0, 0
@@ -12885,6 +12926,7 @@ do
         local uiAlpha = uiOn and (cfg.ReflectionUIOpacity * strength) or 0
         L.Glow.Visible = uiAlpha > 0.003
         L.Sheen.Visible = L.Glow.Visible
+        L.SheenCore.Visible = L.Glow.Visible
         if L.Glow.Visible then
             local D = math.max(size.X, size.Y) * 0.62
             for i, c in ipairs(L.Circles) do
@@ -12895,19 +12937,34 @@ do
                 c.BackgroundColor3 = color
                 c.BackgroundTransparency = 1 - 0.085 * uiAlpha
             end
+
+            local sheenX = math.clamp(L.px, -0.4, 1.4)
+            local sheenHeight = (size.X + size.Y) * 1.2
+            local sheenWidth = size.X * 0.2
             L.Sheen.BackgroundColor3 = color
             L.Sheen.BackgroundTransparency = 1 - 0.22 * uiAlpha
-            L.Sheen.Size = UDim2.fromOffset(size.X * 0.2, (size.X + size.Y) * 1.2)
-            L.Sheen.Position = UDim2.fromScale(math.clamp(L.px, -0.4, 1.4), 0.5)
+            L.Sheen.Size = UDim2.fromOffset(sheenWidth, sheenHeight)
+            L.Sheen.Position = UDim2.fromScale(sheenX, 0.5)
+            L.Sheen.Rotation = (L.angle or 0) + 24
+
+            L.SheenCore.BackgroundColor3 = Color3.new(1, 1, 1)
+            L.SheenCore.BackgroundTransparency = 1 - 0.32 * uiAlpha
+            L.SheenCore.Size = UDim2.fromOffset(sheenWidth * 0.22, sheenHeight * 0.92)
+            L.SheenCore.Position = UDim2.fromScale(sheenX, 0.5)
+            L.SheenCore.Rotation = L.Sheen.Rotation
         end
 
-        -- Reflection Outline
+        -- Reflection Outline + Fresnel rim
         local olAlpha = cfg.ReflectionOutline and (cfg.ReflectionOutlineOpacity * strength) or 0
         L.Outline.Visible = olAlpha > 0.003
         if L.Outline.Visible then
+            local alpha = math.clamp(olAlpha, 0, 1)
             L.Stroke.Color = color
-            L.Stroke.Transparency = 1 - math.clamp(olAlpha, 0, 1)
+            L.Stroke.Transparency = 1 - alpha
             L.StrokeGrad.Rotation = L.angle
+            L.Fresnel.Color = Color3.new(1, 1, 1)
+            L.Fresnel.Transparency = 1 - math.clamp(alpha * 0.42, 0, 1)
+            L.FresnelGrad.Rotation = L.angle + 18
         end
     end
 
