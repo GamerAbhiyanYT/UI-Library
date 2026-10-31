@@ -12579,16 +12579,16 @@ function aa.CreateWindow(az, aA)
     return h
 end
 -- =====================================================================
---  LIQUID GLASS THEME  (WindUI add-on)
+--  LIQUID GLASS THEME  (WindUI add-on)  v2
 --  Aktifkan dengan: WindUI:SetTheme("Liquid Glass")
 --  API:
 --    WindUI:setBgBlur(true/false)
---    WindUI:setBgBlurLevel(0..56)
+--    WindUI:setBgBlurLevel(0..100)
 --    WindUI:setStateReflectionUI(true/false)
 --    WindUI:setOpacityReflectionUI(0..1)
 --    WindUI:setStateReflectionOutline(true/false)
 --    WindUI:setOpacityReflectionOutline(0..1)
---  (alias yang sama juga tersedia di objek Window dan WindUI.LiquidGlass)
+--  (alias yang sama juga ada di objek Window dan WindUI.LiquidGlass)
 -- =====================================================================
 do
     local THEME_NAME = "Liquid Glass"
@@ -12596,14 +12596,16 @@ do
     local Lighting = aa.cloneref(game:GetService "Lighting")
     local Workspace = aa.cloneref(game:GetService "Workspace")
     local TweenService = aa.cloneref(game:GetService "TweenService")
+    local Creator = aa.Creator
+    local makeAcrylicBlur = a.load 'r' -- blur lokal (Part Glass + DepthOfField) bawaan library
 
     local LG = {
         Name = THEME_NAME,
         Config = {
             BgBlur = true,
-            BgBlurLevel = 18,
+            BgBlurLevel = 70,
             ReflectionUI = true,
-            ReflectionUIOpacity = 0.6,
+            ReflectionUIOpacity = 0.7,
             ReflectionOutline = true,
             ReflectionOutlineOpacity = 0.85,
             WindowTransparency = 0.45,
@@ -12611,16 +12613,16 @@ do
         Window = nil,
         Active = false,
         Layers = nil,
-        Blur = nil,
         Conn = nil,
         Saved = nil,
+        DoF = nil,
+        OtherDoF = {},
         _blurNow = 0,
-        _smooth = {},
     }
     aa.LiquidGlass = LG
 
     ------------------------------------------------------------------
-    -- 1. THEME DEFINITION
+    -- 1. THEME
     ------------------------------------------------------------------
     aa.Themes[THEME_NAME] = {
         Name = THEME_NAME,
@@ -12662,8 +12664,8 @@ do
         return math.clamp(tonumber(v) or 0, 0, 1)
     end
 
-    local function smoothstep(a, b, x)
-        local t = math.clamp((x - a) / (b - a), 0, 1)
+    local function smoothstep(a0, b0, x)
+        local t = math.clamp((x - a0) / (b0 - a0), 0, 1)
         return t * t * (3 - 2 * t)
     end
 
@@ -12683,33 +12685,34 @@ do
     local MOON_COLOR = Color3.fromRGB(184, 208, 255)
 
     ------------------------------------------------------------------
-    -- 2. LAYERS (dibuat di atas Window.UIElements.Main)
+    -- 2. LAYERS
     ------------------------------------------------------------------
-    local GLOW_STEPS = 7
-
     local function buildLight(clipRoot, outlineParent, corner, zOutline)
         local L = {}
 
-        -- Hotspot (glow radial dari lingkaran bersusun)
-        L.Glow = new("Frame", {
-            Name = "Glow",
-            BackgroundTransparency = 1,
+        -- Refleksi UI: rim kaca "SquircleGlass" (aset yang sama dgn library) di dalam window,
+        -- gradient-nya berputar ke arah cahaya.
+        L.Rim = Creator.NewRoundFrame(corner, "SquircleGlass", {
+            Name = "GlassRim",
             Size = UDim2.fromScale(1, 1),
+            ImageColor3 = Color3.new(1, 1, 1),
+            ImageTransparency = 1,
             Parent = clipRoot,
+        }, {
+            new("UIGradient", {
+                Name = "RimGradient",
+                Transparency = NumberSequence.new {
+                    NumberSequenceKeypoint.new(0, 0.8),
+                    NumberSequenceKeypoint.new(0.35, 1),
+                    NumberSequenceKeypoint.new(0.6, 0.9),
+                    NumberSequenceKeypoint.new(0.85, 0.25),
+                    NumberSequenceKeypoint.new(1, 0),
+                },
+            }),
         })
-        L.Circles = {}
-        for i = 1, GLOW_STEPS do
-            L.Circles[i] = new("Frame", {
-                Name = "C" .. i,
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = Color3.new(1, 1, 1),
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                Parent = L.Glow,
-            }, {new("UICorner", {CornerRadius = UDim.new(1, 0)})})
-        end
+        L.RimGrad = L.Rim:FindFirstChild "RimGradient"
 
-        -- Sheen (pita cahaya diagonal)
+        -- Sheen: pita cahaya diagonal halus
         L.Sheen = new("Frame", {
             Name = "Sheen",
             AnchorPoint = Vector2.new(0.5, 0.5),
@@ -12728,27 +12731,7 @@ do
             }),
         })
 
-        -- Specular core: highlight tipis di tengah sheen agar pantulan lebih tajam.
-        L.SheenCore = new("Frame", {
-            Name = "SheenCore",
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = Color3.new(1, 1, 1),
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            Rotation = 24,
-            Parent = clipRoot,
-        }, {
-            new("UIGradient", {
-                Transparency = NumberSequence.new {
-                    NumberSequenceKeypoint.new(0, 1),
-                    NumberSequenceKeypoint.new(0.42, 0.15),
-                    NumberSequenceKeypoint.new(0.58, 0.15),
-                    NumberSequenceKeypoint.new(1, 1),
-                },
-            }),
-        })
-
-        -- Outline (UIStroke + gradient yang berputar mengikuti cahaya)
+        -- Refleksi Outline: UIStroke + gradient berputar
         L.Outline = new("Frame", {
             Name = "LGOutline_" .. tostring(zOutline),
             Size = UDim2.fromScale(1, 1),
@@ -12766,7 +12749,6 @@ do
             Parent = L.Outline,
         })
         L.StrokeGrad = new("UIGradient", {
-            Rotation = 0,
             Transparency = NumberSequence.new {
                 NumberSequenceKeypoint.new(0, 0.82),
                 NumberSequenceKeypoint.new(0.3, 1),
@@ -12775,27 +12757,6 @@ do
                 NumberSequenceKeypoint.new(1, 0),
             },
             Parent = L.Stroke,
-        })
-
-        -- Fresnel rim: lapisan tepi kedua untuk kesan kaca yang lebih reflektif.
-        L.Fresnel = new("UIStroke", {
-            Thickness = 3.2,
-            Color = Color3.new(1, 1, 1),
-            Transparency = 1,
-            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            LineJoinMode = Enum.LineJoinMode.Round,
-            Parent = L.Outline,
-        })
-        L.FresnelGrad = new("UIGradient", {
-            Rotation = 0,
-            Transparency = NumberSequence.new {
-                NumberSequenceKeypoint.new(0, 0.94),
-                NumberSequenceKeypoint.new(0.22, 0.35),
-                NumberSequenceKeypoint.new(0.5, 1),
-                NumberSequenceKeypoint.new(0.78, 0.25),
-                NumberSequenceKeypoint.new(1, 0.94),
-            },
-            Parent = L.Fresnel,
         })
 
         L.px, L.py, L.angle, L.intensity, L.facing = 0.5, 0.5, 0, 0, 0
@@ -12820,7 +12781,21 @@ do
             Parent = main,
         }, {new("UICorner", {CornerRadius = UDim.new(0, corner)})})
 
-        -- lapisan kaca dasar: highlight lembut atas-kiri
+        -- Blur LOKAL: hanya area di dalam window (sedikit di-inset agar sudut membulat tetap rapi)
+        local inset = math.floor(corner * 0.3)
+        S.BlurHolder = new("Frame", {
+            Name = "BlurArea",
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(inset, inset),
+            Size = UDim2.new(1, -inset * 2, 1, -inset * 2),
+            Parent = S.Root,
+        })
+        S.Blur = makeAcrylicBlur()
+        S.Blur.Frame.Parent = S.BlurHolder
+        S.Blur.SetVisibility(false)
+        S.BlurShown = false
+
+        -- lapisan kaca dasar
         S.Tint = new("Frame", {
             Name = "Tint",
             Size = UDim2.fromScale(1, 1),
@@ -12849,6 +12824,9 @@ do
         if not S then
             return
         end
+        if S.Blur and S.Blur.Model then
+            S.Blur.Model:Destroy()
+        end
         if S.Root then
             S.Root:Destroy()
         end
@@ -12861,19 +12839,54 @@ do
     end
 
     ------------------------------------------------------------------
-    -- 3. BLUR
+    -- 3. DEPTH OF FIELD (pasangan Part Glass; blur hanya terlihat di area Part)
     ------------------------------------------------------------------
-    local function ensureBlur()
-        if LG.Blur and LG.Blur.Parent then
-            return LG.Blur
+    local function setOtherDoF(disable)
+        if disable then
+            if next(LG.OtherDoF) then
+                return
+            end
+            local function scan(parent)
+                for _, c in ipairs(parent:GetChildren()) do
+                    if c:IsA "DepthOfFieldEffect" and c ~= LG.DoF then
+                        LG.OtherDoF[c] = c.Enabled
+                        c.Enabled = false
+                    end
+                end
+            end
+            scan(Lighting)
+            if Workspace.CurrentCamera then
+                scan(Workspace.CurrentCamera)
+            end
+        else
+            for eff, was in pairs(LG.OtherDoF) do
+                if eff.Parent then
+                    eff.Enabled = was
+                end
+            end
+            table.clear(LG.OtherDoF)
         end
-        local b = Instance.new "BlurEffect"
-        b.Name = "WindUI_LiquidGlassBlur"
-        b.Size = 0
-        b.Enabled = false
-        b.Parent = Lighting
-        LG.Blur = b
-        return b
+    end
+
+    local function setDoF(amount)
+        if amount > 0.01 then
+            if not LG.DoF then
+                LG.DoF = new("DepthOfFieldEffect", {
+                    Name = "WindUI_LiquidGlassDoF",
+                    FarIntensity = 0,
+                    InFocusRadius = 0.1,
+                    NearIntensity = 0,
+                })
+            end
+            setOtherDoF(true)
+            LG.DoF.NearIntensity = amount
+            if LG.DoF.Parent ~= Lighting then
+                LG.DoF.Parent = Lighting
+            end
+        elseif LG.DoF and LG.DoF.Parent then
+            LG.DoF.Parent = nil
+            setOtherDoF(false)
+        end
     end
 
     ------------------------------------------------------------------
@@ -12896,12 +12909,12 @@ do
         return vis, facing, px, py, angle
     end
 
-    local function lerpAngle(a, b, t)
-        local d = ((b - a + 180) % 360) - 180
-        return a + d * t
+    local function lerpAngle(a0, b0, t)
+        local d = ((b0 - a0 + 180) % 360) - 180
+        return a0 + d * t
     end
 
-    local function updateLight(L, isMoon, dir, camCF, dt, size, cfg, lowSunColor)
+    local function updateLight(L, isMoon, dir, camCF, dt, size, cfg)
         local vis, facing, px, py, angle = lightInfo(dir, camCF, isMoon)
         local k = 1 - math.exp(-dt * 10)
         L.px += (px - L.px) * k
@@ -12921,73 +12934,54 @@ do
 
         local strength = L.intensity * (0.3 + 0.7 * L.facing)
 
-        -- Reflection UI (glow + sheen)
-        local uiOn = cfg.ReflectionUI
-        local uiAlpha = uiOn and (cfg.ReflectionUIOpacity * strength) or 0
-        L.Glow.Visible = uiAlpha > 0.003
-        L.Sheen.Visible = L.Glow.Visible
-        L.SheenCore.Visible = L.Glow.Visible
-        if L.Glow.Visible then
-            local D = math.max(size.X, size.Y) * 0.62
-            for i, c in ipairs(L.Circles) do
-                local f = i / GLOW_STEPS
-                local d = D * (1.05 - f * 0.9)
-                c.Size = UDim2.fromOffset(d, d)
-                c.Position = UDim2.fromScale(L.px, L.py)
-                c.BackgroundColor3 = color
-                c.BackgroundTransparency = 1 - 0.085 * uiAlpha
-            end
-
-            local sheenX = math.clamp(L.px, -0.4, 1.4)
-            local sheenHeight = (size.X + size.Y) * 1.2
-            local sheenWidth = size.X * 0.2
+        -- Refleksi UI (rim kaca di dalam window + sheen)
+        local uiAlpha = cfg.ReflectionUI and (cfg.ReflectionUIOpacity * strength) or 0
+        local uiVisible = uiAlpha > 0.003
+        L.Rim.Visible = uiVisible
+        L.Sheen.Visible = uiVisible
+        if uiVisible then
+            L.Rim.ImageColor3 = color
+            L.Rim.ImageTransparency = 1 - math.clamp(uiAlpha, 0, 1)
+            L.RimGrad.Rotation = L.angle
             L.Sheen.BackgroundColor3 = color
-            L.Sheen.BackgroundTransparency = 1 - 0.22 * uiAlpha
-            L.Sheen.Size = UDim2.fromOffset(sheenWidth, sheenHeight)
-            L.Sheen.Position = UDim2.fromScale(sheenX, 0.5)
-            L.Sheen.Rotation = (L.angle or 0) + 24
-
-            L.SheenCore.BackgroundColor3 = Color3.new(1, 1, 1)
-            L.SheenCore.BackgroundTransparency = 1 - 0.32 * uiAlpha
-            L.SheenCore.Size = UDim2.fromOffset(sheenWidth * 0.22, sheenHeight * 0.92)
-            L.SheenCore.Position = UDim2.fromScale(sheenX, 0.5)
-            L.SheenCore.Rotation = L.Sheen.Rotation
+            L.Sheen.BackgroundTransparency = 1 - 0.14 * uiAlpha
+            L.Sheen.Size = UDim2.fromOffset(size.X * 0.2, (size.X + size.Y) * 1.2)
+            L.Sheen.Position = UDim2.fromScale(math.clamp(L.px, -0.4, 1.4), 0.5)
         end
 
-        -- Reflection Outline + Fresnel rim
+        -- Refleksi Outline
         local olAlpha = cfg.ReflectionOutline and (cfg.ReflectionOutlineOpacity * strength) or 0
         L.Outline.Visible = olAlpha > 0.003
         if L.Outline.Visible then
-            local alpha = math.clamp(olAlpha, 0, 1)
             L.Stroke.Color = color
-            L.Stroke.Transparency = 1 - alpha
+            L.Stroke.Transparency = 1 - math.clamp(olAlpha, 0, 1)
             L.StrokeGrad.Rotation = L.angle
-            L.Fresnel.Color = Color3.new(1, 1, 1)
-            L.Fresnel.Transparency = 1 - math.clamp(alpha * 0.42, 0, 1)
-            L.FresnelGrad.Rotation = L.angle + 18
         end
     end
 
     local function step(dt)
         local win = LG.Window
         local cfg = LG.Config
-
-        -- Blur target
-        local targetBlur = 0
         local alive = win and not win.Destroyed and win.UIElements and win.UIElements.Main
             and win.UIElements.Main.Parent
-        if LG.Active and alive and not win.Closed and cfg.BgBlur then
-            targetBlur = math.clamp(cfg.BgBlurLevel, 0, 56)
+
+        -- Blur (lokal, hanya di dalam UI)
+        local want = LG.Active and alive and not win.Closed and cfg.BgBlur
+        local target = want and math.clamp(cfg.BgBlurLevel / 100, 0, 1) or 0
+        if target > 0 or LG._blurNow > 0.005 then
+            LG._blurNow += (target - LG._blurNow) * (1 - math.exp(-dt * 8))
+            if math.abs(LG._blurNow - target) < 0.004 then
+                LG._blurNow = target
+            end
         end
-        if targetBlur > 0 or LG._blurNow > 0.05 then
-            local b = ensureBlur()
-            LG._blurNow += (targetBlur - LG._blurNow) * (1 - math.exp(-dt * 8))
-            b.Size = LG._blurNow
-            b.Enabled = LG._blurNow > 0.05
-        elseif LG.Blur and LG.Blur.Enabled then
-            LG.Blur.Enabled = false
-            LG.Blur.Size = 0
-            LG._blurNow = 0
+        setDoF(LG._blurNow)
+        local S0 = LG.Layers
+        if S0 and S0.Blur then
+            local show = (want and true or false) and LG._blurNow > 0.01
+            if show ~= S0.BlurShown then
+                S0.BlurShown = show
+                S0.Blur.SetVisibility(show)
+            end
         end
 
         if not (LG.Active and alive) then
@@ -13030,7 +13024,7 @@ do
     end
 
     ------------------------------------------------------------------
-    -- 5. ACTIVATE / DEACTIVATE (dipanggil saat tema berubah / window dibuat)
+    -- 5. ACTIVATE / DEACTIVATE
     ------------------------------------------------------------------
     local function applyWindowTransparency(win, on)
         local bg = win.UIElements and win.UIElements.Main and win.UIElements.Main:FindFirstChild "Background"
@@ -13064,21 +13058,17 @@ do
 
     function LG.Refresh()
         local win = LG.Window
-        local cur = (aa.Creator and aa.Creator.Theme) or aa.Theme
-        local isGlass = cur and cur.Name == THEME_NAME
-        LG.Active = isGlass and true or false
+        local cur = (Creator and Creator.Theme) or aa.Theme
+        LG.Active = (cur and cur.Name == THEME_NAME) and true or false
         if win and not win.Destroyed and win.UIElements and win.UIElements.Main then
             applyWindowTransparency(win, LG.Active)
         end
-        if LG.Active then
-            ensureLoop()
-        else
+        if not LG.Active then
             destroyLayers()
         end
-        ensureLoop() -- loop juga dipakai untuk memudarkan blur
+        ensureLoop()
     end
 
-    -- hook SetTheme
     local origSetTheme = aa.SetTheme
     function aa.SetTheme(self, name)
         local r = origSetTheme(self, name)
@@ -13086,17 +13076,18 @@ do
         return r
     end
 
-    -- hook CreateWindow
+    local API = {
+        "setBgBlur", "setBgBlurLevel",
+        "setStateReflectionUI", "setOpacityReflectionUI",
+        "setStateReflectionOutline", "setOpacityReflectionOutline",
+    }
+
     local origCreate = aa.CreateWindow
     function aa.CreateWindow(self, cfg)
         local win = origCreate(self, cfg)
         if win then
             LG.Window = win
-            for _, n in ipairs {
-                "setBgBlur", "setBgBlurLevel",
-                "setStateReflectionUI", "setOpacityReflectionUI",
-                "setStateReflectionOutline", "setOpacityReflectionOutline",
-            } do
+            for _, n in ipairs(API) do
                 win[n] = function(_, v)
                     return LG[n](v)
                 end
@@ -13114,7 +13105,7 @@ do
         return LG.Config.BgBlur
     end
     function LG.setBgBlurLevel(value)
-        LG.Config.BgBlurLevel = math.clamp(tonumber(value) or LG.Config.BgBlurLevel, 0, 56)
+        LG.Config.BgBlurLevel = math.clamp(tonumber(value) or LG.Config.BgBlurLevel, 0, 100)
         return LG.Config.BgBlurLevel
     end
     function LG.setStateReflectionUI(state)
@@ -13148,19 +13139,17 @@ do
         return table.clone(LG.Config)
     end
 
-    -- Akses lewat WindUI:setXxx(...)
-    for _, n in ipairs {
-        "setBgBlur", "setBgBlurLevel",
-        "setStateReflectionUI", "setOpacityReflectionUI",
-        "setStateReflectionOutline", "setOpacityReflectionOutline",
-        "setWindowTransparency", "getConfig",
-    } do
+    for _, n in ipairs(API) do
         aa[n] = function(_, v)
             return LG[n](v)
         end
     end
-    aa.getLiquidGlassConfig = aa.getConfig
-    aa.getConfig = nil
+    aa.setWindowTransparency = function(_, v)
+        return LG.setWindowTransparency(v)
+    end
+    aa.getLiquidGlassConfig = function()
+        return LG.getConfig()
+    end
 end
 
 return aa
