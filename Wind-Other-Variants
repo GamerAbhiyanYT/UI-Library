@@ -2184,7 +2184,21 @@ type ConfigType__DARKLUA_TYPE_a = {
             Holder = nil,
             Parent = nil,
         }
+        -- Pada tema "Liquid Glass" Popup/Dialog memakai transparansi dari tema (kaca), bukan selalu 0.
+        local function popupOpenTransparency_for(kind)
+            local th = aa.Theme
+            if th and th.Name == "Liquid Glass" then
+                local ok, v = pcall(aa.GetThemeProperty, kind .. "BackgroundTransparency", th)
+                if ok and typeof(v) == "number" then
+                    return v
+                end
+            end
+            return 0
+        end
         function ad.Create(ae, af, ag, ah, ai)
+            local popupOpenTransparency = function()
+                return popupOpenTransparency_for(af)
+            end
             local aj = {
                 UICorner = 28,
                 UIPadding = 12,
@@ -2272,7 +2286,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                         if not ae then
                             ac(aj.UIElements.FullScreen, 0.1, {BackgroundTransparency = 0.65}):Play()
                         end
-                        ac(aj.UIElements.MainContainer, 0.1, {ImageTransparency = 0}):Play()
+                        ac(aj.UIElements.MainContainer, 0.1, {ImageTransparency = popupOpenTransparency()}):Play()
                         task.spawn(function()
                                 task.wait(0.05)
                                 aj.UIElements.Main.Visible = true
@@ -2280,6 +2294,10 @@ type ConfigType__DARKLUA_TYPE_a = {
                     end)
             end
             function aj.Close(ak)
+                if aj.IsClosing then
+                    return function() end
+                end
+                aj.IsClosing = true
                 if not ae then
                     ac(aj.UIElements.FullScreen, 0.1, {BackgroundTransparency = 1}):Play()
                     aj.UIElements.FullScreen.Active = false
@@ -2292,9 +2310,13 @@ type ConfigType__DARKLUA_TYPE_a = {
                 ac(aj.UIElements.MainContainer, 0.1, {ImageTransparency = 1}):Play()
                 task.spawn(function()
                         task.wait(0.1)
-                        if not ae then
+                        -- FIX: MainContainer bisa di-parent ke window (Colorpicker / Window:Dialog) sehingga
+                        -- menghancurkan FullScreen saja meninggalkan MainContainer (beserta overlay + Part
+                        -- blur Liquid Glass) tetap hidup. Hancurkan keduanya.
+                        if aj.UIElements.FullScreen then
                             aj.UIElements.FullScreen:Destroy()
-                        else
+                        end
+                        if aj.UIElements.MainContainer then
                             aj.UIElements.MainContainer:Destroy()
                         end
                     end)
@@ -12594,8 +12616,10 @@ function aa.CreateWindow(az, aA)
     return h
 end
 -- =====================================================================
---  LIQUID GLASS THEME  (WindUI add-on)  v3
+--  LIQUID GLASS THEME  (WindUI add-on)  v4
 --  Aktifkan dengan: WindUI:SetTheme("Liquid Glass")
+--  Berlaku untuk: Window, Element, Tab, Section, Dropdown, Notification,
+--                 Popup, Dialog (termasuk Colorpicker) dan Open Button.
 --  API:
 --    WindUI:setBgBlur(true/false)
 --    WindUI:setBgBlurLevel(0..100)
@@ -12606,6 +12630,12 @@ end
 --    WindUI:setGlassTint(Color3 / "#hex")   -- warna kaca; hitam = UI hitam
 --    WindUI:resetLiquidGlass()
 --  (alias yang sama juga ada di objek Window dan WindUI.LiquidGlass)
+--
+--  v4 (perbaikan):
+--   * Colorpicker / Dialog yang sudah ditutup tidak lagi meninggalkan sisa UI + blur
+--   * Popup, Dialog dan Open Button kini bertema Liquid Glass (kaca + blur + pantulan)
+--   * Optimasi lag/freeze: attach bertahap (time-sliced), Part blur dibuat saat dibutuhkan
+--     saja, overlay hanya untuk komponen yang terlihat, tulis properti hanya saat berubah
 -- =====================================================================
 do
     local THEME_NAME = "Liquid Glass"
@@ -12640,23 +12670,30 @@ do
             Sun = {px = 0.5, py = 0.5, angle = 0, intensity = 0, facing = 0, strength = 0, color = Color3.new(1, 1, 1)},
             Moon = {px = 0.5, py = 0.5, angle = 0, intensity = 0, facing = 0, strength = 0, color = Color3.new(1, 1, 1)},
         },
+        OpenButtonSaved = nil,
         _blurNow = 0,
+        _dofNow = 0,
         _acc = 0,
         _maint = 0,
+        _blurAcc = 0,
+        _needAttach = true,
+        _anyFloat = false,
+        _tintQueued = false,
     }
     aa.LiquidGlass = LG
 
     -- faktor kekuatan outline per jenis komponen
     local KIND_FACTOR = {
         Element = 0.85, Tab = 1, Section = 0.9, Code = 0.9, Input = 0.9,
-        Tag = 0.9, Popup = 1, Notification = 1, Dropdown = 1,
+        Tag = 0.9, Popup = 1, Notification = 1, Dropdown = 1, OpenButton = 1,
     }
-    -- komponen melayang yang ikut mendapat blur lokal
-    local BLUR_KINDS = {Popup = true, Notification = true, Dropdown = true}
+    -- komponen melayang yang ikut mendapat blur lokal (Part blur hanya dibuat saat komponen tampil)
+    local BLUR_KINDS = {Popup = true, Notification = true, Dropdown = true, OpenButton = true}
+    -- komponen melayang tidak di-cull terhadap area window
+    local FLOATING = {Popup = true, Notification = true, Dropdown = true, OpenButton = true}
+    -- ZIndex overlay pantulan (Open Button harus di atas tombolnya yang ber-ZIndex 99)
+    local KIND_Z = {OpenButton = 120}
 
-    ------------------------------------------------------------------
-    -- 1. THEME (dibangun dari warna Tint; lihat buildTheme di bawah)
-    ------------------------------------------------------------------
     ------------------------------------------------------------------
     -- helpers
     ------------------------------------------------------------------
@@ -12680,6 +12717,16 @@ do
         return o
     end
 
+    -- true bila nilai baru berbeda cukup jauh dari yang tersimpan (lalu menyimpannya)
+    local function far(store, key, v, eps)
+        local old = store[key]
+        if old == nil or math.abs(v - old) > eps then
+            store[key] = v
+            return true
+        end
+        return false
+    end
+
     local SUN_WARM = Color3.fromRGB(255, 241, 214)
     local SUN_LOW = Color3.fromRGB(255, 162, 96)
     local MOON_COLOR = Color3.fromRGB(184, 208, 255)
@@ -12700,6 +12747,9 @@ do
         return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B
     end
 
+    ------------------------------------------------------------------
+    -- 1. THEME
+    ------------------------------------------------------------------
     local function buildTheme(tint)
         local light = brightness(tint) > 0.62
         local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
@@ -12708,6 +12758,8 @@ do
         local icon = light and Color3.fromHex "#3A4352" or Color3.fromHex "#DCE5F7"
         local ph = light and Color3.fromHex "#4A5262" or Color3.fromHex "#C5CFE6"
         local elemT = light and 0.93 or 0.9
+        local glass = light and mul(tint, 0.92) or mul(tint, 0.7) -- badan kaca Popup / Dialog
+        local glassT = 0.35
         return {
             Name = THEME_NAME,
             Accent = mul(tint, 1.25),
@@ -12739,6 +12791,18 @@ do
             TabBackgroundActiveTransparency = 0.84,
             TabBorderTransparencyActive = 0.6,
             DropdownBackground = mul(tint, 0.85),
+
+            -- Popup + Dialog (Colorpicker, Window:Dialog, WindUI:Popup): kaca transparan + teks kontras
+            PopupBackground = glass,
+            PopupBackgroundTransparency = glassT,
+            PopupTitle = text,
+            PopupContent = text,
+            PopupIcon = icon,
+            DialogBackground = glass,
+            DialogBackgroundTransparency = glassT,
+            DialogTitle = text,
+            DialogContent = text,
+            DialogIcon = icon,
         }
     end
 
@@ -12756,6 +12820,7 @@ do
             Size = UDim2.fromScale(1, 1),
             ImageColor3 = Color3.new(1, 1, 1),
             ImageTransparency = 1,
+            Visible = false,
             Parent = clipRoot,
         }, {new("UIGradient", {Name = "RimGradient", Transparency = RIM_SEQ})})
         L.RimGrad = L.Rim:FindFirstChild "RimGradient"
@@ -12767,6 +12832,7 @@ do
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             Rotation = 24,
+            Visible = false,
             Parent = clipRoot,
         }, {
             new("UIGradient", {
@@ -12784,6 +12850,7 @@ do
             BackgroundTransparency = 1,
             ZIndex = zOutline,
             Active = false,
+            Visible = false,
             Parent = outlineParent,
         }, {new("UICorner", {CornerRadius = UDim.new(0, corner)})})
         L.Stroke = new("UIStroke", {
@@ -12883,8 +12950,8 @@ do
     end
 
     ------------------------------------------------------------------
-    -- 3. OUTLINE REFLEKTIF UNTUK KOMPONEN (Tab, Element, Section, Dropdown, Popup, Notification, ...)
-    --    Komponen mendaftar lewat Creator.Reflect(...) (hook kecil di source).
+    -- 3. OUTLINE REFLEKTIF UNTUK KOMPONEN (Tab, Element, Section, Dropdown, Popup, Dialog,
+    --    Notification, Open Button, ...). Komponen mendaftar lewat Creator.Reflect(...).
     ------------------------------------------------------------------
     local LAYOUT_CLASSES = {"UIListLayout", "UIGridLayout", "UITableLayout", "UIPageLayout"}
 
@@ -12911,26 +12978,45 @@ do
         return cur == game
     end
 
-    local function detachTarget(t)
-        if t.Blur and t.Blur.Model then
-            t.Blur.Model:Destroy()
+    -- hancurkan Part blur (+ frame penjangkarnya) milik sebuah target
+    local function destroyTargetBlur(t)
+        local blur = t.Blur
+        if not blur then
+            return
         end
+        t.Blur = nil
+        pcall(function()
+            if blur.Model then
+                blur.Model:Destroy()
+            end
+            if blur.Frame then
+                blur.Frame:Destroy()
+            end
+        end)
+    end
+
+    local function detachTarget(t)
+        destroyTargetBlur(t)
         if t.Overlay then
             t.Overlay:Destroy()
         end
-        t.Overlay, t.Grad, t.Blur = nil, nil, nil
+        t.Overlay, t.Grad, t.Holder = nil, nil, nil
         t.lastAlpha, t.lastAngle, t.lastColor, t.lastVis = nil, nil, nil, nil
     end
 
     local function attachTarget(obj, t)
         if t.Overlay and t.Overlay.Parent then
-            return
+            return true
+        end
+        if t.Skip then
+            return false
         end
         if not obj.Parent or not obj:IsDescendantOf(game) then
-            return
+            return false
         end
         if hasLayout(obj) then
-            return -- overlay akan ikut ter-layout; lewati
+            t.Skip = true -- overlay akan ikut ter-layout; lewati (dicek sekali saja)
+            return false
         end
         -- kompensasi UIPadding agar overlay tepat menutupi tepi komponen
         local pl, pr, pt, pb = 0, 0, 0, 0
@@ -12948,79 +13034,112 @@ do
                 ImageTransparency = 1,
                 Visible = false,
                 Active = false,
-                ZIndex = 5,
+                ZIndex = KIND_Z[t.Kind] or 5,
                 Parent = obj,
             }, {new("UIGradient", {Name = "LGGrad", Transparency = RIM_SEQ})})
         end)
         if not ok or not ov then
-            t.Failed = true
-            return
+            t.Skip = true
+            return false
         end
         t.Overlay = ov
         t.Grad = ov:FindFirstChild "LGGrad"
 
         if BLUR_KINDS[t.Kind] then
+            -- hanya wadahnya; Part blur dibuat nanti saat komponen benar-benar tampil
             local inset = math.floor((t.Radius or 12) * 0.3)
-            local holder = new("Frame", {
+            t.Holder = new("Frame", {
                 Name = "LGBlurArea",
                 BackgroundTransparency = 1,
                 Position = UDim2.fromOffset(inset, inset),
                 Size = UDim2.new(1, -inset * 2, 1, -inset * 2),
                 Parent = ov,
             })
-            local okb, blur = pcall(makeAcrylicBlur)
-            if okb and blur then
-                blur.Frame.Parent = holder
-                blur.SetVisibility(false)
-                t.Blur = blur
-                t.BlurShown = false
-            end
         end
+        return true
     end
 
     function LG.Register(obj, radius, kind)
         if not obj then
             return
         end
-        LG.Targets[obj] = {Radius = tonumber(radius) or 10, Kind = kind or "Element", Born = os.clock()}
-        if LG.Active then
-            task.defer(function()
-                local t = LG.Targets[obj]
-                if t then
-                    pcall(attachTarget, obj, t)
-                end
-            end)
+        local old = LG.Targets[obj]
+        if old then
+            detachTarget(old)
+            if old.Conn then
+                old.Conn:Disconnect()
+            end
         end
+        local t = {Radius = tonumber(radius) or 10, Kind = kind or "Element", Born = os.clock()}
+        LG.Targets[obj] = t
+        -- begitu komponen dihancurkan (mis. Colorpicker / Dialog ditutup), overlay + Part blur
+        -- ikut dibersihkan saat itu juga, tidak menunggu siklus pemeliharaan
+        t.Conn = obj.Destroying:Connect(function()
+            if LG.Targets[obj] == t then
+                detachTarget(t)
+                LG.Targets[obj] = nil
+            end
+        end)
+        LG._needAttach = true
     end
     Creator.ReflectHook = LG.Register
 
+    -- Pemeliharaan target. Attach dilakukan BERTAHAP (maks ~3 ms per frame) supaya mengaktifkan
+    -- tema pada UI besar tidak membuat game membeku.
+    local ATTACH_BUDGET = 0.003
+
     local function maintainTargets()
         local now = os.clock()
+        local deadline = now + ATTACH_BUDGET
+        local pending, young = false, false
         for obj, t in pairs(LG.Targets) do
             local alive = obj.Parent ~= nil and obj:IsDescendantOf(game)
             if not alive then
                 if now - t.Born > 8 then
                     detachTarget(t)
+                    if t.Conn then
+                        t.Conn:Disconnect()
+                    end
                     LG.Targets[obj] = nil
-                elseif t.Overlay and not t.Overlay.Parent then
-                    detachTarget(t)
+                else
+                    young = true
+                    if t.Overlay and not t.Overlay.Parent then
+                        detachTarget(t)
+                    end
                 end
-            elseif LG.Active and not t.Failed then
-                pcall(attachTarget, obj, t)
+            elseif LG.Active and not t.Skip and not (t.Overlay and t.Overlay.Parent) then
+                if os.clock() < deadline then
+                    pcall(attachTarget, obj, t)
+                else
+                    pending = true
+                end
             end
         end
+        LG._needAttach = pending
+        LG._maintInterval = pending and 0 or (young and 0.1 or 0.5)
     end
 
     local function detachAllTargets()
         for _, t in pairs(LG.Targets) do
             detachTarget(t)
-            t.Failed = nil
+            t.Skip = nil
         end
     end
 
-    local function applyTargets(dom, cfg, wantBlur)
+    -- area window (untuk men-cull overlay komponen yang berada di luar layar / terpotong scroll)
+    local function windowRect()
+        local win = LG.Window
+        local main = win and not win.Destroyed and win.UIElements and win.UIElements.Main
+        if main and main.Parent then
+            return main.AbsolutePosition, main.AbsoluteSize
+        end
+        return nil, nil
+    end
+
+    local function applyTargets(dom, cfg)
         local alpha = cfg.ReflectionOutline and (cfg.ReflectionOutlineOpacity * dom.strength) or 0
         local angle, color = dom.angle, dom.color
+        local wp, ws = windowRect()
         for obj, t in pairs(LG.Targets) do
             local ov = t.Overlay
             if ov then
@@ -13029,6 +13148,10 @@ do
                 else
                     local a2 = alpha * (KIND_FACTOR[t.Kind] or 1)
                     local vis = a2 > 0.003
+                    if vis and wp and not FLOATING[t.Kind] then
+                        local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+                        vis = p.X < wp.X + ws.X and p.X + s.X > wp.X and p.Y < wp.Y + ws.Y and p.Y + s.Y > wp.Y
+                    end
                     if vis ~= t.lastVis then
                         t.lastVis = vis
                         ov.Visible = vis
@@ -13047,29 +13170,78 @@ do
                             ov.ImageColor3 = color
                         end
                     end
-                    if t.Blur then
-                        local show = wantBlur and isShown(obj)
-                        if show ~= t.BlurShown then
-                            t.BlurShown = show
-                            t.Blur.SetVisibility(show)
-                        end
-                    end
                 end
             end
         end
     end
 
-    local function anyTargetBlurShown()
-        for _, t in pairs(LG.Targets) do
-            if t.Blur and t.BlurShown then
-                return true
+    -- Blur lokal komponen melayang: Part dibuat HANYA ketika komponennya tampil, dihancurkan saat
+    -- disembunyikan. Jadi tidak ada Part Glass menganggur yang ikut dirender / di-update kamera.
+    local function updateBlurTargets(wantBlur)
+        local anyFloat = false
+        for obj, t in pairs(LG.Targets) do
+            if t.Holder then
+                local ready = t.Overlay and t.Overlay.Parent and t.Holder.Parent
+                local shown = ready and isShown(obj) or false
+                if shown then
+                    anyFloat = true
+                end
+                if wantBlur and shown then
+                    if not t.Blur then
+                        local ok, blur = pcall(makeAcrylicBlur)
+                        if ok and blur then
+                            blur.Frame.Parent = t.Holder
+                            blur.SetVisibility(true)
+                            t.Blur = blur
+                        end
+                    end
+                else
+                    destroyTargetBlur(t)
+                end
             end
         end
-        return false
+        LG._anyFloat = anyFloat
+    end
+
+    local function destroyAllTargetBlurs()
+        for _, t in pairs(LG.Targets) do
+            destroyTargetBlur(t)
+        end
+        LG._anyFloat = false
     end
 
     ------------------------------------------------------------------
-    -- 4. DEPTH OF FIELD (pasangan Part Glass; blur hanya terlihat di area Part = di dalam UI)
+    -- 4. OPEN BUTTON (tombol pembuka window) -> kaca + pantulan + blur
+    ------------------------------------------------------------------
+    local function applyOpenButton(win, on)
+        local ob = win and win.OpenButtonMain
+        local btn = ob and ob.Button
+        if not btn or not btn.Parent then
+            return
+        end
+        local wrap = btn.Parent
+        if on then
+            if not LG.OpenButtonSaved then
+                LG.OpenButtonSaved = {Color = btn.BackgroundColor3, Transparency = btn.BackgroundTransparency}
+            end
+            local tint = LG.Config.Tint
+            btn.BackgroundColor3 = brightness(tint) > 0.62 and mul(tint, 0.92) or mul(tint, 0.7)
+            btn.BackgroundTransparency = 0.4
+            -- overlay dipasang pada wadah (tanpa UIListLayout) agar tidak ikut ter-layout
+            local cur = LG.Targets[wrap]
+            if not cur then
+                LG.Register(wrap, 22, "OpenButton")
+            end
+        elseif LG.OpenButtonSaved then
+            local s = LG.OpenButtonSaved
+            LG.OpenButtonSaved = nil
+            btn.BackgroundColor3 = s.Color
+            btn.BackgroundTransparency = s.Transparency
+        end
+    end
+
+    ------------------------------------------------------------------
+    -- 5. DEPTH OF FIELD (pasangan Part Glass; blur hanya terlihat di area Part = di dalam UI)
     ------------------------------------------------------------------
     local function setOtherDoF(disable)
         if disable then
@@ -13109,7 +13281,9 @@ do
                 })
             end
             setOtherDoF(true)
-            LG.DoF.NearIntensity = amount
+            if math.abs(LG.DoF.NearIntensity - amount) > 0.002 then
+                LG.DoF.NearIntensity = amount
+            end
             if LG.DoF.Parent ~= Lighting then
                 LG.DoF.Parent = Lighting
             end
@@ -13120,7 +13294,7 @@ do
     end
 
     ------------------------------------------------------------------
-    -- 5. CAHAYA (matahari / bulan) + FRAME LOOP
+    -- 6. CAHAYA (matahari / bulan) + FRAME LOOP
     ------------------------------------------------------------------
     local function lerpAngle(a0, b0, t)
         local d = ((b0 - a0 + 180) % 360) - 180
@@ -13153,27 +13327,55 @@ do
         st.color = isMoon and MOON_COLOR or SUN_LOW:Lerp(SUN_WARM, smoothstep(0.02, 0.45, dir.Y))
     end
 
+    -- Semua penulisan properti dibatasi ambang perubahan: CanvasGroup window tidak digambar ulang
+    -- tiap frame ketika cahaya nyaris tidak berubah.
     local function applyWindowLight(L, st, size, cfg)
         local uiAlpha = cfg.ReflectionUI and (cfg.ReflectionUIOpacity * st.strength) or 0
         local uiVisible = uiAlpha > 0.003
-        L.Rim.Visible = uiVisible
-        L.Sheen.Visible = uiVisible
+        if L._uiVis ~= uiVisible then
+            L._uiVis = uiVisible
+            L.Rim.Visible = uiVisible
+            L.Sheen.Visible = uiVisible
+        end
         if uiVisible then
-            L.Rim.ImageColor3 = st.color
-            L.Rim.ImageTransparency = 1 - math.clamp(uiAlpha, 0, 1)
-            L.RimGrad.Rotation = st.angle
-            L.Sheen.BackgroundColor3 = st.color
-            L.Sheen.BackgroundTransparency = 1 - 0.14 * uiAlpha
-            L.Sheen.Size = UDim2.fromOffset(size.X * 0.2, (size.X + size.Y) * 1.2)
-            L.Sheen.Position = UDim2.fromScale(math.clamp(st.px, -0.4, 1.4), 0.5)
+            if far(L, "_uiA", uiAlpha, 0.008) then
+                L.Rim.ImageTransparency = 1 - math.clamp(uiAlpha, 0, 1)
+                L.Sheen.BackgroundTransparency = 1 - 0.14 * uiAlpha
+            end
+            if L._uiCol ~= st.color then
+                L._uiCol = st.color
+                L.Rim.ImageColor3 = st.color
+                L.Sheen.BackgroundColor3 = st.color
+            end
+            if far(L, "_uiAng", st.angle, 0.4) then
+                L.RimGrad.Rotation = st.angle
+            end
+            local c1 = far(L, "_px", st.px, 0.004)
+            local c2 = far(L, "_sx", size.X, 1)
+            local c3 = far(L, "_sy", size.Y, 1)
+            if c1 or c2 or c3 then
+                L.Sheen.Size = UDim2.fromOffset(size.X * 0.2, (size.X + size.Y) * 1.2)
+                L.Sheen.Position = UDim2.fromScale(math.clamp(st.px, -0.4, 1.4), 0.5)
+            end
         end
 
         local olAlpha = cfg.ReflectionOutline and (cfg.ReflectionOutlineOpacity * st.strength) or 0
-        L.Outline.Visible = olAlpha > 0.003
-        if L.Outline.Visible then
-            L.Stroke.Color = st.color
-            L.Stroke.Transparency = 1 - math.clamp(olAlpha, 0, 1)
-            L.StrokeGrad.Rotation = st.angle
+        local olVisible = olAlpha > 0.003
+        if L._olVis ~= olVisible then
+            L._olVis = olVisible
+            L.Outline.Visible = olVisible
+        end
+        if olVisible then
+            if L._olCol ~= st.color then
+                L._olCol = st.color
+                L.Stroke.Color = st.color
+            end
+            if far(L, "_olA", olAlpha, 0.008) then
+                L.Stroke.Transparency = 1 - math.clamp(olAlpha, 0, 1)
+            end
+            if far(L, "_olAng", st.angle, 0.4) then
+                L.StrokeGrad.Rotation = st.angle
+            end
         end
     end
 
@@ -13195,7 +13397,7 @@ do
 
         -- Blur lokal
         local wantBlur = LG.Active and cfg.BgBlur
-        local needed = wantBlur and (winOpen or anyTargetBlurShown())
+        local needed = wantBlur and (winOpen or LG._anyFloat)
         local target = needed and math.clamp(cfg.BgBlurLevel / 100, 0, 1) or 0
         if target > 0 or LG._blurNow > 0.005 then
             LG._blurNow += (target - LG._blurNow) * (1 - math.exp(-dt * 8))
@@ -13218,17 +13420,22 @@ do
             return
         end
 
-        -- komponen (throttle ~30 Hz)
+        -- komponen
         LG._acc += dt
         LG._maint += dt
-        if LG._maint >= 0.3 then
+        LG._blurAcc += dt
+        if LG._needAttach or LG._maint >= (LG._maintInterval or 0.3) then
             LG._maint = 0
             maintainTargets()
+        end
+        if LG._blurAcc >= 0.1 then
+            LG._blurAcc = 0
+            updateBlurTargets(wantBlur and LG._blurNow > 0.01)
         end
         if LG._acc >= 1 / 30 then
             LG._acc = 0
             local dom = (LG.LS.Sun.strength >= LG.LS.Moon.strength) and LG.LS.Sun or LG.LS.Moon
-            applyTargets(dom, cfg, wantBlur and LG._blurNow > 0.01)
+            applyTargets(dom, cfg)
         end
 
         -- window (refleksi UI + outline Main UI)
@@ -13264,7 +13471,7 @@ do
     end
 
     ------------------------------------------------------------------
-    -- 6. ACTIVATE / DEACTIVATE
+    -- 7. ACTIVATE / DEACTIVATE
     ------------------------------------------------------------------
     local function applyWindowTransparency(win, on)
         local bg = win.UIElements and win.UIElements.Main and win.UIElements.Main:FindFirstChild "Background"
@@ -13302,11 +13509,13 @@ do
         LG.Active = (cur and cur.Name == THEME_NAME) and true or false
         if win and not win.Destroyed and win.UIElements and win.UIElements.Main then
             applyWindowTransparency(win, LG.Active)
+            pcall(applyOpenButton, win, LG.Active)
         end
         if LG.Active then
-            task.defer(maintainTargets)
+            LG._needAttach = true
         else
             destroyLayers()
+            destroyAllTargetBlurs()
             detachAllTargets()
         end
         ensureLoop()
@@ -13342,7 +13551,7 @@ do
     end
 
     ------------------------------------------------------------------
-    -- 7. PUBLIC API
+    -- 8. PUBLIC API
     ------------------------------------------------------------------
     function LG.setBgBlur(state)
         LG.Config.BgBlur = state and true or false
@@ -13392,9 +13601,20 @@ do
         for k, v in pairs(buildTheme(value)) do
             theme[k] = v
         end
-        local cur = Creator.Theme
-        if cur and cur.Name == THEME_NAME then
-            Creator.UpdateTheme(nil, false)
+        -- UpdateTheme menyentuh SEMUA objek ber-ThemeTag: gabungkan pemanggilan beruntun (mis. saat
+        -- colorpicker/slider memanggil ini berkali-kali) menjadi satu kali per ~60 ms.
+        if not LG._tintQueued then
+            LG._tintQueued = true
+            task.delay(0.06, function()
+                LG._tintQueued = false
+                local cur = Creator.Theme
+                if cur and cur.Name == THEME_NAME then
+                    Creator.UpdateTheme(nil, false)
+                    if LG.Window and not LG.Window.Destroyed then
+                        pcall(applyOpenButton, LG.Window, true)
+                    end
+                end
+            end)
         end
         return value
     end
