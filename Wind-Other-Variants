@@ -12633,7 +12633,7 @@ do
             ReflectionOutline = true,
             ReflectionOutlineOpacity = 0.85,
             WindowTransparency = 0.45,
-            Tint = Color3.fromHex "#1E2A47",
+            Tint = Color3.fromHex "#000000",
         },
         Window = nil,
         Active = false,
