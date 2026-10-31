@@ -12603,6 +12603,8 @@ end
 --    WindUI:setOpacityReflectionUI(0..1)
 --    WindUI:setStateReflectionOutline(true/false)   -- outline window + semua komponen
 --    WindUI:setOpacityReflectionOutline(0..1)
+--    WindUI:setGlassTint(Color3 / "#hex")   -- warna kaca; hitam = UI hitam
+--    WindUI:resetLiquidGlass()
 --  (alias yang sama juga ada di objek Window dan WindUI.LiquidGlass)
 -- =====================================================================
 do
@@ -12624,6 +12626,7 @@ do
             ReflectionOutline = true,
             ReflectionOutlineOpacity = 0.85,
             WindowTransparency = 0.45,
+            Tint = Color3.fromHex "#1E2A47",
         },
         Window = nil,
         Active = false,
@@ -12652,41 +12655,8 @@ do
     local BLUR_KINDS = {Popup = true, Notification = true, Dropdown = true}
 
     ------------------------------------------------------------------
-    -- 1. THEME
+    -- 1. THEME (dibangun dari warna Tint; lihat buildTheme di bawah)
     ------------------------------------------------------------------
-    aa.Themes[THEME_NAME] = {
-        Name = THEME_NAME,
-        Accent = Color3.fromHex "#26324D",
-        Dialog = Color3.fromHex "#18213A",
-        Outline = Color3.fromHex "#FFFFFF",
-        Text = Color3.fromHex "#FFFFFF",
-        Placeholder = Color3.fromHex "#C5CFE6",
-        Background = Color3.fromHex "#141C30",
-        BackgroundTransparency = 0.2,
-        WindowBackground = aa:Gradient({
-            ["0"] = {Color = Color3.fromHex "#34456E", Transparency = 0.05},
-            ["45"] = {Color = Color3.fromHex "#162038", Transparency = 0.3},
-            ["100"] = {Color = Color3.fromHex "#2C3558", Transparency = 0.05},
-        }, {Rotation = 135}),
-        Button = Color3.fromHex "#8794B3",
-        Icon = Color3.fromHex "#DCE5F7",
-        Toggle = Color3.fromHex "#34D17B",
-        Slider = Color3.fromHex "#5AB0FF",
-        Checkbox = Color3.fromHex "#5AB0FF",
-        Primary = Color3.fromHex "#5AB0FF",
-        SliderIcon = Color3.fromHex "#B9C5E0",
-        PanelBackground = Color3.fromHex "#FFFFFF",
-        PanelBackgroundTransparency = 0.9,
-        LabelBackground = Color3.fromHex "#FFFFFF",
-        LabelBackgroundTransparency = 0.9,
-        ElementBackground = Color3.fromHex "#FFFFFF",
-        ElementBackgroundTransparency = 0.9,
-        TabBackgroundHoverTransparency = 0.92,
-        TabBackgroundActiveTransparency = 0.84,
-        TabBorderTransparencyActive = 0.6,
-        DropdownBackground = Color3.fromHex "#1B2540",
-    }
-
     ------------------------------------------------------------------
     -- helpers
     ------------------------------------------------------------------
@@ -12721,6 +12691,59 @@ do
         NumberSequenceKeypoint.new(0.85, 0.25),
         NumberSequenceKeypoint.new(1, 0),
     }
+
+    -- Tema dibangun dari warna Tint. Hitam -> UI hitam, putih -> UI terang (teks otomatis gelap).
+    local function mul(c, k)
+        return Color3.new(math.clamp(c.R * k, 0, 1), math.clamp(c.G * k, 0, 1), math.clamp(c.B * k, 0, 1))
+    end
+    local function brightness(c)
+        return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B
+    end
+
+    local function buildTheme(tint)
+        local light = brightness(tint) > 0.62
+        local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
+        local base = light and BLACK or WHITE -- warna lapisan elemen (di atas kaca)
+        local text = light and Color3.fromHex "#10141A" or WHITE
+        local icon = light and Color3.fromHex "#3A4352" or Color3.fromHex "#DCE5F7"
+        local ph = light and Color3.fromHex "#4A5262" or Color3.fromHex "#C5CFE6"
+        local elemT = light and 0.93 or 0.9
+        return {
+            Name = THEME_NAME,
+            Accent = mul(tint, 1.25),
+            Dialog = mul(tint, 0.9),
+            Outline = base,
+            Text = text,
+            Placeholder = ph,
+            Background = mul(tint, 0.8),
+            BackgroundTransparency = 0.2,
+            WindowBackground = aa:Gradient({
+                ["0"] = {Color = mul(tint, 1.3), Transparency = 0.05},
+                ["45"] = {Color = mul(tint, 0.85), Transparency = 0.3},
+                ["100"] = {Color = mul(tint, 1.15), Transparency = 0.05},
+            }, {Rotation = 135}),
+            Button = light and mul(tint, 0.55) or tint:Lerp(WHITE, 0.45),
+            Icon = icon,
+            Toggle = Color3.fromHex "#34D17B",
+            Slider = Color3.fromHex "#5AB0FF",
+            Checkbox = Color3.fromHex "#5AB0FF",
+            Primary = Color3.fromHex "#5AB0FF",
+            SliderIcon = icon,
+            PanelBackground = base,
+            PanelBackgroundTransparency = elemT,
+            LabelBackground = base,
+            LabelBackgroundTransparency = elemT,
+            ElementBackground = base,
+            ElementBackgroundTransparency = elemT,
+            TabBackgroundHoverTransparency = 0.92,
+            TabBackgroundActiveTransparency = 0.84,
+            TabBorderTransparencyActive = 0.6,
+            DropdownBackground = mul(tint, 0.85),
+        }
+    end
+
+    LG.Defaults = table.clone(LG.Config)
+    aa.Themes[THEME_NAME] = buildTheme(LG.Config.Tint)
 
     ------------------------------------------------------------------
     -- 2. LAYERS WINDOW (refleksi UI + outline Main UI + blur lokal window)
@@ -12792,11 +12815,13 @@ do
         local corner = win.UICorner or 16
         local S = {}
 
-        S.Root = new("Frame", {
+        -- CanvasGroup: satu-satunya cara agar anak-anaknya (tint, sheen) terpotong mengikuti sudut melengkung
+        S.Root = new("CanvasGroup", {
             Name = "LiquidGlass",
             Size = UDim2.fromScale(1, 1),
             BackgroundTransparency = 1,
-            ClipsDescendants = true,
+            GroupTransparency = 0,
+            BorderSizePixel = 0,
             ZIndex = 50,
             Active = false,
             Parent = main,
@@ -13298,6 +13323,7 @@ do
         "setBgBlur", "setBgBlurLevel",
         "setStateReflectionUI", "setOpacityReflectionUI",
         "setStateReflectionOutline", "setOpacityReflectionOutline",
+        "setGlassTint",
     }
 
     local origCreate = aa.CreateWindow
@@ -13353,6 +13379,36 @@ do
         end
         return LG.Config.WindowTransparency
     end
+    function LG.setGlassTint(value)
+        if typeof(value) == "string" then
+            local ok, c = pcall(Color3.fromHex, value)
+            value = ok and c or nil
+        end
+        if typeof(value) ~= "Color3" then
+            return LG.Config.Tint
+        end
+        LG.Config.Tint = value
+        local theme = aa.Themes[THEME_NAME]
+        for k, v in pairs(buildTheme(value)) do
+            theme[k] = v
+        end
+        local cur = Creator.Theme
+        if cur and cur.Name == THEME_NAME then
+            Creator.UpdateTheme(nil, false)
+        end
+        return value
+    end
+    function LG.getGlassTint()
+        return LG.Config.Tint
+    end
+    function LG.reset()
+        for k, v in pairs(LG.Defaults) do
+            LG.Config[k] = v
+        end
+        LG.setGlassTint(LG.Defaults.Tint)
+        LG.setWindowTransparency(LG.Defaults.WindowTransparency)
+        return LG.getConfig()
+    end
     function LG.getConfig()
         return table.clone(LG.Config)
     end
@@ -13364,6 +13420,15 @@ do
     end
     aa.setWindowTransparency = function(_, v)
         return LG.setWindowTransparency(v)
+    end
+    aa.setGlassTint = function(_, v)
+        return LG.setGlassTint(v)
+    end
+    aa.getGlassTint = function()
+        return LG.getGlassTint()
+    end
+    aa.resetLiquidGlass = function()
+        return LG.reset()
     end
     aa.getLiquidGlassConfig = function()
         return LG.getConfig()
