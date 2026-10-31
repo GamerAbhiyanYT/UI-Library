@@ -2184,7 +2184,7 @@ type ConfigType__DARKLUA_TYPE_a = {
             Holder = nil,
             Parent = nil,
         }
-        -- Pada tema "Liquid Glass" Popup/Dialog memakai transparansi dari tema (kaca), bukan selalu 0.
+
         local function popupOpenTransparency_for(kind)
             local th = aa.Theme
             if th and th.Name == "Liquid Glass" then
@@ -2310,9 +2310,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 ac(aj.UIElements.MainContainer, 0.1, {ImageTransparency = 1}):Play()
                 task.spawn(function()
                         task.wait(0.1)
-                        -- FIX: MainContainer bisa di-parent ke window (Colorpicker / Window:Dialog) sehingga
-                        -- menghancurkan FullScreen saja meninggalkan MainContainer (beserta overlay + Part
-                        -- blur Liquid Glass) tetap hidup. Hancurkan keduanya.
+
                         if aj.UIElements.FullScreen then
                             aj.UIElements.FullScreen:Destroy()
                         end
@@ -12615,28 +12613,7 @@ function aa.CreateWindow(az, aA)
     end
     return h
 end
--- =====================================================================
---  LIQUID GLASS THEME  (WindUI add-on)  v4
---  Aktifkan dengan: WindUI:SetTheme("Liquid Glass")
---  Berlaku untuk: Window, Element, Tab, Section, Dropdown, Notification,
---                 Popup, Dialog (termasuk Colorpicker) dan Open Button.
---  API:
---    WindUI:setBgBlur(true/false)
---    WindUI:setBgBlurLevel(0..100)
---    WindUI:setStateReflectionUI(true/false)
---    WindUI:setOpacityReflectionUI(0..1)
---    WindUI:setStateReflectionOutline(true/false)   -- outline window + semua komponen
---    WindUI:setOpacityReflectionOutline(0..1)
---    WindUI:setGlassTint(Color3 / "#hex")   -- warna kaca; hitam = UI hitam
---    WindUI:resetLiquidGlass()
---  (alias yang sama juga ada di objek Window dan WindUI.LiquidGlass)
---
---  v4 (perbaikan):
---   * Colorpicker / Dialog yang sudah ditutup tidak lagi meninggalkan sisa UI + blur
---   * Popup, Dialog dan Open Button kini bertema Liquid Glass (kaca + blur + pantulan)
---   * Optimasi lag/freeze: attach bertahap (time-sliced), Part blur dibuat saat dibutuhkan
---     saja, overlay hanya untuk komponen yang terlihat, tulis properti hanya saat berubah
--- =====================================================================
+
 do
     local THEME_NAME = "Liquid Glass"
     local RunService = aa.cloneref(game:GetService "RunService")
@@ -12644,7 +12621,7 @@ do
     local Workspace = aa.cloneref(game:GetService "Workspace")
     local TweenService = aa.cloneref(game:GetService "TweenService")
     local Creator = aa.Creator
-    local makeAcrylicBlur = a.load 'r' -- blur lokal bawaan library (Part Glass + DepthOfField)
+    local makeAcrylicBlur = a.load 'r'
 
     local LG = {
         Name = THEME_NAME,
@@ -12682,21 +12659,16 @@ do
     }
     aa.LiquidGlass = LG
 
-    -- faktor kekuatan outline per jenis komponen
     local KIND_FACTOR = {
         Element = 0.85, Tab = 1, Section = 0.9, Code = 0.9, Input = 0.9,
         Tag = 0.9, Popup = 1, Notification = 1, Dropdown = 1, OpenButton = 1,
     }
-    -- komponen melayang yang ikut mendapat blur lokal (Part blur hanya dibuat saat komponen tampil)
+    
     local BLUR_KINDS = {Popup = true, Notification = true, Dropdown = true, OpenButton = true}
-    -- komponen melayang tidak di-cull terhadap area window
     local FLOATING = {Popup = true, Notification = true, Dropdown = true, OpenButton = true}
-    -- ZIndex overlay pantulan (Open Button harus di atas tombolnya yang ber-ZIndex 99)
     local KIND_Z = {OpenButton = 120}
 
-    ------------------------------------------------------------------
-    -- helpers
-    ------------------------------------------------------------------
+
     local function clamp01(v)
         return math.clamp(tonumber(v) or 0, 0, 1)
     end
@@ -12717,7 +12689,6 @@ do
         return o
     end
 
-    -- true bila nilai baru berbeda cukup jauh dari yang tersimpan (lalu menyimpannya)
     local function far(store, key, v, eps)
         local old = store[key]
         if old == nil or math.abs(v - old) > eps then
@@ -12739,7 +12710,6 @@ do
         NumberSequenceKeypoint.new(1, 0),
     }
 
-    -- Tema dibangun dari warna Tint. Hitam -> UI hitam, putih -> UI terang (teks otomatis gelap).
     local function mul(c, k)
         return Color3.new(math.clamp(c.R * k, 0, 1), math.clamp(c.G * k, 0, 1), math.clamp(c.B * k, 0, 1))
     end
@@ -12747,18 +12717,15 @@ do
         return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B
     end
 
-    ------------------------------------------------------------------
-    -- 1. THEME
-    ------------------------------------------------------------------
     local function buildTheme(tint)
         local light = brightness(tint) > 0.62
         local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
-        local base = light and BLACK or WHITE -- warna lapisan elemen (di atas kaca)
+        local base = light and BLACK or WHITE
         local text = light and Color3.fromHex "#10141A" or WHITE
         local icon = light and Color3.fromHex "#3A4352" or Color3.fromHex "#DCE5F7"
         local ph = light and Color3.fromHex "#4A5262" or Color3.fromHex "#C5CFE6"
         local elemT = light and 0.93 or 0.9
-        local glass = light and mul(tint, 0.92) or mul(tint, 0.7) -- badan kaca Popup / Dialog
+        local glass = light and mul(tint, 0.92) or mul(tint, 0.7)
         local glassT = 0.35
         return {
             Name = THEME_NAME,
@@ -12792,7 +12759,6 @@ do
             TabBorderTransparencyActive = 0.6,
             DropdownBackground = mul(tint, 0.85),
 
-            -- Popup + Dialog (Colorpicker, Window:Dialog, WindUI:Popup): kaca transparan + teks kontras
             PopupBackground = glass,
             PopupBackgroundTransparency = glassT,
             PopupTitle = text,
@@ -12809,9 +12775,6 @@ do
     LG.Defaults = table.clone(LG.Config)
     aa.Themes[THEME_NAME] = buildTheme(LG.Config.Tint)
 
-    ------------------------------------------------------------------
-    -- 2. LAYERS WINDOW (refleksi UI + outline Main UI + blur lokal window)
-    ------------------------------------------------------------------
     local function buildLight(clipRoot, outlineParent, corner, zOutline)
         local L = {}
 
@@ -12882,7 +12845,6 @@ do
         local corner = win.UICorner or 16
         local S = {}
 
-        -- CanvasGroup: satu-satunya cara agar anak-anaknya (tint, sheen) terpotong mengikuti sudut melengkung
         S.Root = new("CanvasGroup", {
             Name = "LiquidGlass",
             Size = UDim2.fromScale(1, 1),
@@ -12949,10 +12911,6 @@ do
         LG.Layers = nil
     end
 
-    ------------------------------------------------------------------
-    -- 3. OUTLINE REFLEKTIF UNTUK KOMPONEN (Tab, Element, Section, Dropdown, Popup, Dialog,
-    --    Notification, Open Button, ...). Komponen mendaftar lewat Creator.Reflect(...).
-    ------------------------------------------------------------------
     local LAYOUT_CLASSES = {"UIListLayout", "UIGridLayout", "UITableLayout", "UIPageLayout"}
 
     local function hasLayout(obj)
@@ -12978,7 +12936,6 @@ do
         return cur == game
     end
 
-    -- hancurkan Part blur (+ frame penjangkarnya) milik sebuah target
     local function destroyTargetBlur(t)
         local blur = t.Blur
         if not blur then
@@ -13015,10 +12972,10 @@ do
             return false
         end
         if hasLayout(obj) then
-            t.Skip = true -- overlay akan ikut ter-layout; lewati (dicek sekali saja)
+            t.Skip = true
             return false
         end
-        -- kompensasi UIPadding agar overlay tepat menutupi tepi komponen
+        
         local pl, pr, pt, pb = 0, 0, 0, 0
         local pad = obj:FindFirstChildOfClass "UIPadding"
         if pad then
@@ -13046,7 +13003,7 @@ do
         t.Grad = ov:FindFirstChild "LGGrad"
 
         if BLUR_KINDS[t.Kind] then
-            -- hanya wadahnya; Part blur dibuat nanti saat komponen benar-benar tampil
+
             local inset = math.floor((t.Radius or 12) * 0.3)
             t.Holder = new("Frame", {
                 Name = "LGBlurArea",
@@ -13072,8 +13029,7 @@ do
         end
         local t = {Radius = tonumber(radius) or 10, Kind = kind or "Element", Born = os.clock()}
         LG.Targets[obj] = t
-        -- begitu komponen dihancurkan (mis. Colorpicker / Dialog ditutup), overlay + Part blur
-        -- ikut dibersihkan saat itu juga, tidak menunggu siklus pemeliharaan
+
         t.Conn = obj.Destroying:Connect(function()
             if LG.Targets[obj] == t then
                 detachTarget(t)
@@ -13084,8 +13040,6 @@ do
     end
     Creator.ReflectHook = LG.Register
 
-    -- Pemeliharaan target. Attach dilakukan BERTAHAP (maks ~3 ms per frame) supaya mengaktifkan
-    -- tema pada UI besar tidak membuat game membeku.
     local ATTACH_BUDGET = 0.003
 
     local function maintainTargets()
@@ -13126,7 +13080,6 @@ do
         end
     end
 
-    -- area window (untuk men-cull overlay komponen yang berada di luar layar / terpotong scroll)
     local function windowRect()
         local win = LG.Window
         local main = win and not win.Destroyed and win.UIElements and win.UIElements.Main
@@ -13175,8 +13128,6 @@ do
         end
     end
 
-    -- Blur lokal komponen melayang: Part dibuat HANYA ketika komponennya tampil, dihancurkan saat
-    -- disembunyikan. Jadi tidak ada Part Glass menganggur yang ikut dirender / di-update kamera.
     local function updateBlurTargets(wantBlur)
         local anyFloat = false
         for obj, t in pairs(LG.Targets) do
@@ -13210,9 +13161,6 @@ do
         LG._anyFloat = false
     end
 
-    ------------------------------------------------------------------
-    -- 4. OPEN BUTTON (tombol pembuka window) -> kaca + pantulan + blur
-    ------------------------------------------------------------------
     local function applyOpenButton(win, on)
         local ob = win and win.OpenButtonMain
         local btn = ob and ob.Button
@@ -13227,7 +13175,7 @@ do
             local tint = LG.Config.Tint
             btn.BackgroundColor3 = brightness(tint) > 0.62 and mul(tint, 0.92) or mul(tint, 0.7)
             btn.BackgroundTransparency = 0.4
-            -- overlay dipasang pada wadah (tanpa UIListLayout) agar tidak ikut ter-layout
+            
             local cur = LG.Targets[wrap]
             if not cur then
                 LG.Register(wrap, 22, "OpenButton")
@@ -13240,9 +13188,6 @@ do
         end
     end
 
-    ------------------------------------------------------------------
-    -- 5. DEPTH OF FIELD (pasangan Part Glass; blur hanya terlihat di area Part = di dalam UI)
-    ------------------------------------------------------------------
     local function setOtherDoF(disable)
         if disable then
             if next(LG.OtherDoF) then
@@ -13293,9 +13238,6 @@ do
         end
     end
 
-    ------------------------------------------------------------------
-    -- 6. CAHAYA (matahari / bulan) + FRAME LOOP
-    ------------------------------------------------------------------
     local function lerpAngle(a0, b0, t)
         local d = ((b0 - a0 + 180) % 360) - 180
         return a0 + d * t
@@ -13327,8 +13269,6 @@ do
         st.color = isMoon and MOON_COLOR or SUN_LOW:Lerp(SUN_WARM, smoothstep(0.02, 0.45, dir.Y))
     end
 
-    -- Semua penulisan properti dibatasi ambang perubahan: CanvasGroup window tidak digambar ulang
-    -- tiap frame ketika cahaya nyaris tidak berubah.
     local function applyWindowLight(L, st, size, cfg)
         local uiAlpha = cfg.ReflectionUI and (cfg.ReflectionUIOpacity * st.strength) or 0
         local uiVisible = uiAlpha > 0.003
@@ -13386,7 +13326,6 @@ do
             and win.UIElements.Main.Parent
         local winOpen = alive and not win.Closed
 
-        -- cahaya (dihitung selama tema aktif, termasuk saat window tertutup agar Notification tetap hidup)
         if LG.Active then
             local cam = Workspace.CurrentCamera
             if cam then
@@ -13395,7 +13334,6 @@ do
             end
         end
 
-        -- Blur lokal
         local wantBlur = LG.Active and cfg.BgBlur
         local needed = wantBlur and (winOpen or LG._anyFloat)
         local target = needed and math.clamp(cfg.BgBlurLevel / 100, 0, 1) or 0
@@ -13420,7 +13358,6 @@ do
             return
         end
 
-        -- komponen
         LG._acc += dt
         LG._maint += dt
         LG._blurAcc += dt
@@ -13438,7 +13375,6 @@ do
             applyTargets(dom, cfg)
         end
 
-        -- window (refleksi UI + outline Main UI)
         if not alive then
             return
         end
@@ -13470,9 +13406,6 @@ do
         end
     end
 
-    ------------------------------------------------------------------
-    -- 7. ACTIVATE / DEACTIVATE
-    ------------------------------------------------------------------
     local function applyWindowTransparency(win, on)
         local bg = win.UIElements and win.UIElements.Main and win.UIElements.Main:FindFirstChild "Background"
         if on then
@@ -13550,9 +13483,6 @@ do
         return win
     end
 
-    ------------------------------------------------------------------
-    -- 8. PUBLIC API
-    ------------------------------------------------------------------
     function LG.setBgBlur(state)
         LG.Config.BgBlur = state and true or false
         return LG.Config.BgBlur
@@ -13601,8 +13531,7 @@ do
         for k, v in pairs(buildTheme(value)) do
             theme[k] = v
         end
-        -- UpdateTheme menyentuh SEMUA objek ber-ThemeTag: gabungkan pemanggilan beruntun (mis. saat
-        -- colorpicker/slider memanggil ini berkali-kali) menjadi satu kali per ~60 ms.
+
         if not LG._tintQueued then
             LG._tintQueued = true
             task.delay(0.06, function()
