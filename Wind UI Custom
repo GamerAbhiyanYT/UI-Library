@@ -3656,14 +3656,30 @@ type ConfigType__DARKLUA_TYPE_a = {
         local function NormalizeGradient(color, rotation)
             if typeof(color) == "ColorSequence" then
                 return {Color = color, Rotation = rotation or 0}
+            elseif typeof(color) == "table" and color.Rotation == nil and rotation ~= nil then
+                local copy = {}
+                for key, value in next, color do
+                    copy[key] = value
+                end
+                copy.Rotation = rotation
+                return copy
             end
             return color
         end
         function aa.New(ae, af, ag)
+            local startEnabled = true
+            if af.Enabled ~= nil then
+                startEnabled = af.Enabled and true or false
+            elseif af.Visible ~= nil then
+                startEnabled = af.Visible and true or false
+            end
             local ah = {
                 Title = af.Title or "Tag",
                 Icon = af.Icon,
                 Color = NormalizeGradient(af.Color, af.Rotation) or Color3.fromHex "#315dff",
+                Rotation = af.Rotation or 0,
+                Transparency = math.clamp(tonumber(af.Transparency) or 0, 0, 1),
+                Enabled = startEnabled,
                 Radius = af.Radius or 999,
                 Border = af.Border or false,
                 TagFrame = nil,
@@ -3672,6 +3688,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                 TextSize = 14,
                 IconSize = 16,
             }
+            if typeof(ah.Color) == "table" and ah.Color.Rotation then
+                ah.Rotation = ah.Color.Rotation
+            end
             local function ResolveContentColor(color)
                 local base
                 if typeof(color) == "Color3" then
@@ -3686,11 +3705,16 @@ type ConfigType__DARKLUA_TYPE_a = {
                 end
                 return ab.GetTextColorForHSB(base)
             end
+            local function BuildIcon(name)
+                local icon = ab.Image(name, name, 0, af.Window, "Tag", false)
+                icon.Size = UDim2.new(0, ah.IconSize, 0, ah.IconSize)
+                icon.LayoutOrder = -1
+                icon.ImageLabel.ImageColor3 = ResolveContentColor(ah.Color)
+                return icon
+            end
             local ai
             if ah.Icon then
-                ai = ab.Image(ah.Icon, ah.Icon, 0, af.Window, "Tag", false)
-                ai.Size = UDim2.new(0, ah.IconSize, 0, ah.IconSize)
-                ai.ImageLabel.ImageColor3 = ResolveContentColor(ah.Color)
+                ai = BuildIcon(ah.Icon)
             end
             local aj = ac("TextLabel", {
                     BackgroundTransparency = 1,
@@ -3703,18 +3727,47 @@ type ConfigType__DARKLUA_TYPE_a = {
             local ak
             if typeof(ah.Color) == "table" then
                 ak = ac "UIGradient"
-                for al, am in next, ah.Color do
-                    ak[al] = am
-                end
-                aj.TextColor3 = ab.GetTextColorForHSB(ab.GetAverageColor(ak))
-                if ai then
-                    ai.ImageLabel.ImageColor3 = ab.GetTextColorForHSB(ab.GetAverageColor(ak))
+                for key, value in next, ah.Color do
+                    ak[key] = value
                 end
             end
-            local al = ab.NewRoundFrame(ah.Radius, "Squircle", {
+            local function GlassTransparency(t)
+                return 0.75 + (1 - 0.75) * t
+            end
+            local glass, glassCtl = ab.NewRoundFrame(ah.Radius + 1, "SquircleGlass", {
+                    Size = UDim2.new(1, 1, 1, 1),
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    Position = UDim2.new(0.5, 0, 0.5, 0),
+                    ThemeTag = {
+                        ImageColor3 = "White",
+                    },
+                    ImageTransparency = GlassTransparency(ah.Transparency),
+                })
+            local content = ac("Frame", {
+                    Size = UDim2.new(0, 0, 1, 0),
+                    AutomaticSize = "X",
+                    Name = "Content",
+                    BackgroundTransparency = 1,
+                }, {
+                    ai,
+                    aj,
+                    ac("UIPadding", {
+                            PaddingLeft = UDim.new(0, ah.Padding),
+                            PaddingRight = UDim.new(0, ah.Padding),
+                        }),
+                    ac("UIListLayout", {
+                            FillDirection = "Horizontal",
+                            VerticalAlignment = "Center",
+                            SortOrder = "LayoutOrder",
+                            Padding = UDim.new(0, ah.Padding / 1.5),
+                        }),
+                })
+            local al, alCtl = ab.NewRoundFrame(ah.Radius, "Squircle", {
                     AutomaticSize = "X",
                     Size = UDim2.new(0, 0, 0, ah.Height),
                     Parent = ag,
+                    Visible = ah.Enabled,
+                    ImageTransparency = ah.Transparency,
                     ImageColor3 = typeof(ah.Color) == "Color3" and ah.Color
                     or typeof(ah.Color) == "table" and Color3.new(1, 1, 1)
                     or nil,
@@ -3723,54 +3776,60 @@ type ConfigType__DARKLUA_TYPE_a = {
                     },
                 }, {
                     ak,
-                    ab.NewRoundFrame(ah.Radius + 1, "SquircleGlass", {
-                            Size = UDim2.new(1, 1, 1, 1),
-                            AnchorPoint = Vector2.new(0.5, 0.5),
-                            Position = UDim2.new(0.5, 0, 0.5, 0),
-                            ThemeTag = {
-                                ImageColor3 = "White",
-                            },
-                            ImageTransparency = 0.75,
-                        }),
-                    ac("Frame", {
-                            Size = UDim2.new(0, 0, 1, 0),
-                            AutomaticSize = "X",
-                            Name = "Content",
-                            BackgroundTransparency = 1,
-                        }, {
-                            ai,
-                            aj,
-                            ac("UIPadding", {
-                                    PaddingLeft = UDim.new(0, ah.Padding),
-                                    PaddingRight = UDim.new(0, ah.Padding),
-                                }),
-                            ac("UIListLayout", {
-                                    FillDirection = "Horizontal",
-                                    VerticalAlignment = "Center",
-                                    Padding = UDim.new(0, ah.Padding / 1.5),
-                                }),
-                        }),
+                    glass,
+                    content,
                 })
+            ah.TagFrame = al
             ab.Reflect(al, ah.Radius, "Tag")
+
+            -- Re-evaluates the squircle shape (pill / rounded) after a radius change,
+            -- mirroring the auto-switch the round-frame module does on resize.
+            local function ApplyShape(frame, ctl, radius, suffix)
+                ctl:SetRadius(radius)
+                local uiScale = ab.UIScale or 1
+                local w = math.round(frame.AbsoluteSize.X / uiScale)
+                local h = math.round(frame.AbsoluteSize.Y / uiScale)
+                if w <= 0 or h <= 0 then
+                    return
+                end
+                local effective = radius ~= 0 and radius or math.min(w, h) / 2
+                local round = effective / math.min(w, h) >= 310 / 1024
+                local shape
+                if w > h then
+                    shape = round and "SquircleH" or "Squircle"
+                elseif w < h then
+                    shape = round and "SquircleV" or "Squircle"
+                else
+                    shape = round and "Circle" or "Squircle"
+                end
+                shape = shape .. suffix
+                if shape ~= ctl:GetType() then
+                    ctl:SetType(shape)
+                end
+            end
+
             function ah.SetTitle(am, an)
                 ah.Title = an
                 aj.Text = an
                 return ah
             end
             function ah.SetColor(am, an, rotation)
-                an = NormalizeGradient(an, rotation)
+                an = NormalizeGradient(an, rotation or ah.Rotation)
                 ah.Color = an
+                local contentColor = ResolveContentColor(an)
+                ad(aj, 0.06, {TextColor3 = contentColor}):Play()
+                if ai then
+                    ad(ai.ImageLabel, 0.06, {ImageColor3 = contentColor}):Play()
+                end
                 if typeof(an) == "table" then
-                    local ao = ab.GetAverageColor(an)
-                    ad(aj, 0.06, {TextColor3 = ab.GetTextColorForHSB(ao)}):Play()
-                    if ai then
-                        ad(ai.ImageLabel, 0.06, {ImageColor3 = ab.GetTextColorForHSB(ao)}):Play()
+                    if an.Rotation then
+                        ah.Rotation = an.Rotation
                     end
-                    local ap = al:FindFirstChildOfClass "UIGradient" or ac("UIGradient", {Parent = al})
-                    for aq, ar in next, an do
-                        ap[aq] = ar
+                    local gradient = al:FindFirstChildOfClass "UIGradient" or ac("UIGradient", {Parent = al})
+                    for key, value in next, an do
+                        gradient[key] = value
                     end
-                    ak = ap
+                    ak = gradient
                     ad(al, 0.06, {ImageColor3 = Color3.new(1, 1, 1)}):Play()
                 else
                     local old = al:FindFirstChildOfClass "UIGradient"
@@ -3778,46 +3837,115 @@ type ConfigType__DARKLUA_TYPE_a = {
                         old:Destroy()
                     end
                     ak = nil
-                    ad(aj, 0.06, {TextColor3 = ab.GetTextColorForHSB(an)}):Play()
-                    if ai then
-                        ad(ai.ImageLabel, 0.06, {ImageColor3 = ab.GetTextColorForHSB(an)}):Play()
+                    local solid = typeof(an) == "string" and ab.GetThemeProperty(an, ab.Theme) or an
+                    if typeof(solid) == "Color3" then
+                        ad(al, 0.06, {ImageColor3 = solid}):Play()
                     end
-                    ad(al, 0.06, {ImageColor3 = an}):Play()
                 end
+                return ah
+            end
+            function ah.SetRotation(am, an)
+                ah.Rotation = tonumber(an) or 0
+                local gradient = al:FindFirstChildOfClass "UIGradient"
+                if gradient then
+                    gradient.Rotation = ah.Rotation
+                end
+                return ah
+            end
+            function ah.SetTransparency(am, an)
+                an = math.clamp(tonumber(an) or 0, 0, 1)
+                ah.Transparency = an
+                ad(al, 0.06, {ImageTransparency = an}):Play()
+                ad(glass, 0.06, {ImageTransparency = GlassTransparency(an)}):Play()
+                return ah
+            end
+            function ah.SetRadius(am, an)
+                an = math.max(tonumber(an) or 0, 0)
+                ah.Radius = an
+                ApplyShape(al, alCtl, an, "")
+                ApplyShape(glass, glassCtl, an + 1, "Glass")
+                ab.Reflect(al, an, "Tag")
                 return ah
             end
             function ah.SetIcon(am, an)
                 ah.Icon = an
+                if ai then
+                    ai:Destroy()
+                    ai = nil
+                end
                 if an then
-                    ai = ab.Image(an, an, 0, af.Window, "Tag", false)
-                    ai.Size = UDim2.new(0, ah.IconSize, 0, ah.IconSize)
-                    ai.Parent = al
-                    ai.ImageLabel.ImageColor3 = ResolveContentColor(ah.Color)
-                else
-                    if ai then
-                        ai:Destroy()
-                        ai = nil
-                    end
+                    ai = BuildIcon(an)
+                    ai.Parent = content
                 end
                 return ah
             end
-            function ah.Destroy(am)
-                al:Destroy()
+            function ah.SetEnabled(am, state)
+                if state == nil then
+                    state = true
+                end
+                ah.Enabled = state and true or false
+                al.Visible = ah.Enabled
                 return ah
             end
-            ab:OnThemeChange(function(am, an)
+            ah.SetVisible = ah.SetEnabled
+            function ah.Enable(am)
+                return ah:SetEnabled(true)
+            end
+            function ah.Disable(am)
+                return ah:SetEnabled(false)
+            end
+            function ah.Toggle(am)
+                return ah:SetEnabled(not ah.Enabled)
+            end
+            function ah.IsEnabled(am)
+                return ah.Enabled
+            end
+            function ah.Update(am, props)
+                if typeof(props) ~= "table" then
+                    return ah
+                end
+                if props.Title ~= nil then
+                    ah:SetTitle(props.Title)
+                end
+                if props.Icon ~= nil then
+                    ah:SetIcon(props.Icon)
+                end
+                if props.Color ~= nil then
+                    ah:SetColor(props.Color, props.Rotation)
+                elseif props.Rotation ~= nil then
+                    ah:SetRotation(props.Rotation)
+                end
+                if props.Transparency ~= nil then
+                    ah:SetTransparency(props.Transparency)
+                end
+                if props.Radius ~= nil then
+                    ah:SetRadius(props.Radius)
+                end
+                if props.Enabled ~= nil then
+                    ah:SetEnabled(props.Enabled)
+                elseif props.Visible ~= nil then
+                    ah:SetEnabled(props.Visible)
+                end
+                return ah
+            end
+            local themeConnection = ab:OnThemeChange(function(am, an)
                     if typeof(ah.Color) ~= "string" then
                         return
                     end
-                    local themeColor = ab.GetThemeProperty(ah.Color, ab.Theme)
-                    if typeof(themeColor) ~= "Color3" then
-                        return
-                    end
-                    aj.TextColor3 = ab.GetTextColorForHSB(themeColor)
+                    local contentColor = ResolveContentColor(ah.Color)
+                    aj.TextColor3 = contentColor
                     if ai then
-                        ai.ImageLabel.ImageColor3 = ab.GetTextColorForHSB(themeColor)
+                        ai.ImageLabel.ImageColor3 = contentColor
                     end
                 end)
+            function ah.Destroy(am)
+                if themeConnection then
+                    themeConnection.Disconnect()
+                    themeConnection = nil
+                end
+                al:Destroy()
+                return ah
+            end
             return ah
         end
         return aa end function a.z()
