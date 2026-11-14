@@ -3653,11 +3653,17 @@ type ConfigType__DARKLUA_TYPE_a = {
         local ab = a.load 'd'
         local ac = ab.New
         local ad = ab.Tween
+        local function NormalizeGradient(color, rotation)
+            if typeof(color) == "ColorSequence" then
+                return {Color = color, Rotation = rotation or 0}
+            end
+            return color
+        end
         function aa.New(ae, af, ag)
             local ah = {
                 Title = af.Title or "Tag",
                 Icon = af.Icon,
-                Color = af.Color or Color3.fromHex "#315dff",
+                Color = NormalizeGradient(af.Color, af.Rotation) or Color3.fromHex "#315dff",
                 Radius = af.Radius or 999,
                 Border = af.Border or false,
                 TagFrame = nil,
@@ -3742,20 +3748,27 @@ type ConfigType__DARKLUA_TYPE_a = {
                 aj.Text = an
                 return ah
             end
-            function ah.SetColor(am, an)
+            function ah.SetColor(am, an, rotation)
+                an = NormalizeGradient(an, rotation)
                 ah.Color = an
                 if typeof(an) == "table" then
                     local ao = ab.GetAverageColor(an)
                     ad(aj, 0.06, {TextColor3 = ab.GetTextColorForHSB(ao)}):Play()
+                    if ai then
+                        ad(ai.ImageLabel, 0.06, {ImageColor3 = ab.GetTextColorForHSB(ao)}):Play()
+                    end
                     local ap = al:FindFirstChildOfClass "UIGradient" or ac("UIGradient", {Parent = al})
                     for aq, ar in next, an do
                         ap[aq] = ar
                     end
+                    ak = ap
                     ad(al, 0.06, {ImageColor3 = Color3.new(1, 1, 1)}):Play()
                 else
-                    if ak then
-                        ak:Destroy()
+                    local old = al:FindFirstChildOfClass "UIGradient"
+                    if old then
+                        old:Destroy()
                     end
+                    ak = nil
                     ad(aj, 0.06, {TextColor3 = ab.GetTextColorForHSB(an)}):Play()
                     if ai then
                         ad(ai.ImageLabel, 0.06, {ImageColor3 = ab.GetTextColorForHSB(an)}):Play()
@@ -3788,9 +3801,17 @@ type ConfigType__DARKLUA_TYPE_a = {
                 return ah
             end
             ab:OnThemeChange(function(am, an)
-                    aj.TextColor3 = ab.GetTextColorForHSB(ab.GetThemeProperty(ah.Color, ab.Theme))
-                    ai.ImageLabel.ImageColor3 =
-                    ab.GetTextColorForHSB(ab.GetThemeProperty(ah.Color, ab.Theme))
+                    if typeof(ah.Color) ~= "string" then
+                        return
+                    end
+                    local themeColor = ab.GetThemeProperty(ah.Color, ab.Theme)
+                    if typeof(themeColor) ~= "Color3" then
+                        return
+                    end
+                    aj.TextColor3 = ab.GetTextColorForHSB(themeColor)
+                    if ai then
+                        ai.ImageLabel.ImageColor3 = ab.GetTextColorForHSB(themeColor)
+                    end
                 end)
             return ah
         end
