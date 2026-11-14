@@ -3672,14 +3672,25 @@ type ConfigType__DARKLUA_TYPE_a = {
                 TextSize = 14,
                 IconSize = 16,
             }
+            local function ResolveContentColor(color)
+                local base
+                if typeof(color) == "Color3" then
+                    base = color
+                elseif typeof(color) == "string" then
+                    base = ab.GetThemeProperty(color, ab.Theme)
+                elseif typeof(color) == "table" and color.Color and color.Color.Keypoints then
+                    base = ab.GetAverageColor(color)
+                end
+                if typeof(base) ~= "Color3" then
+                    base = Color3.new(0, 0, 0)
+                end
+                return ab.GetTextColorForHSB(base)
+            end
             local ai
             if ah.Icon then
                 ai = ab.Image(ah.Icon, ah.Icon, 0, af.Window, "Tag", false)
                 ai.Size = UDim2.new(0, ah.IconSize, 0, ah.IconSize)
-                ai.ImageLabel.ImageColor3 = typeof(ah.Color) == "Color3"
-                and ab.GetTextColorForHSB(ah.Color)
-                or typeof(ah.Color) == "string"
-                and (ab.GetTextColorForHSB(ab.GetThemeProperty(ah.Color, ab.Theme)))
+                ai.ImageLabel.ImageColor3 = ResolveContentColor(ah.Color)
             end
             local aj = ac("TextLabel", {
                     BackgroundTransparency = 1,
@@ -3687,9 +3698,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     TextSize = ah.TextSize,
                     FontFace = Font.new(ab.Font, Enum.FontWeight.SemiBold),
                     Text = ah.Title,
-                    TextColor3 = typeof(ah.Color) == "Color3" and ab.GetTextColorForHSB(ah.Color) or typeof(
-                        ah.Color
-                    ) == "string" and (ab.GetTextColorForHSB(ab.GetThemeProperty(ah.Color, ab.Theme))),
+                    TextColor3 = ResolveContentColor(ah.Color),
                 })
             local ak
             if typeof(ah.Color) == "table" then
@@ -3783,11 +3792,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     ai = ab.Image(an, an, 0, af.Window, "Tag", false)
                     ai.Size = UDim2.new(0, ah.IconSize, 0, ah.IconSize)
                     ai.Parent = al
-                    if typeof(ah.Color) == "Color3" then
-                        ai.ImageLabel.ImageColor3 = ab.GetTextColorForHSB(ah.Color)
-                    elseif typeof(ah.Color) == "table" then
-                        ai.ImageLabel.ImageColor3 = ab.GetTextColorForHSB(ab.GetAverageColor(ak))
-                    end
+                    ai.ImageLabel.ImageColor3 = ResolveContentColor(ah.Color)
                 else
                     if ai then
                         ai:Destroy()
