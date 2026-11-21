@@ -13636,6 +13636,8 @@ do
         ReducedMotion = false,
         Mobile = UIS.TouchEnabled and not UIS.KeyboardEnabled,
         Listeners = {},
+        TabListeners = {},
+        Swipe = true,
         Mains = setmetatable({}, {__mode = "k"}),
         Groups = {},
         Metrics = {
@@ -13645,6 +13647,7 @@ do
         },
     }
     aa.FX = FX
+    local barStates
     if FX.Mobile then
         FX.Density = "Touch" -- target sentuh minimal 44px
     end
@@ -13799,140 +13802,10 @@ do
     end
 
     -- opts: Kind = "Button"|"Edge"|"Plain", Radius, HoldScale, Drag(bool)
+    -- FX tambahan dinonaktifkan: kontrol kembali memakai perilaku native WindUI.
+    -- Fungsi ini sengaja tidak mengubah event/callback bawaan elemen.
     function FX.Attach(main, opts)
-        if not main or not main:IsA "GuiObject" or main:GetAttribute "FXAttached" then return end
-        main:SetAttribute("FXAttached", true)
-        opts = opts or {}
-        local kind = opts.Kind or "Plain"
-        local radius = opts.Radius or 12
-        FX.Mains[main] = true
-        task.defer(applyDensityToMain, main)
-
-        local layer = makeLayer(main, radius)
-        local scale = main:FindFirstChildOfClass "UIScale"
-        if not scale and kind == "Button" then
-            scale = New("UIScale", {Name = "FXScale", Parent = main})
-        end
-
-        -- edge light (tab / dropdown / input / dll)
-        local stroke
-        do
-            local edge = New("Frame", {
-                Name = "FXEdge", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-                ZIndex = 62, Active = false, Parent = layer,
-            }, {New("UICorner", {CornerRadius = UDim.new(0, radius)})})
-            stroke = New("UIStroke", {Thickness = 1.6, Transparency = 1, Color = Color3.new(1, 1, 1), Parent = edge})
-        end
-
-        local glow
-        local active, held, dragging, start, token
-        local wrap, wrapHome
-
-        local function ensureGlow()
-            if glow then return glow end
-            glow = New("Frame", {
-                AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(0, 0),
-                BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.82,
-                BorderSizePixel = 0, ZIndex = 63, Parent = layer,
-            }, {New("UICorner", {CornerRadius = UDim.new(1, 0)})})
-            return glow
-        end
-
-        local function moveGlow(p)
-            if not glow then return end
-            local lp = localPos(layer, p)
-            glow.Position = UDim2.fromOffset(lp.X, lp.Y)
-        end
-
-        local function holdOn(p)
-            held = true
-            if kind == "Button" then
-                if scale then tw(scale, 0.25, {Scale = opts.HoldScale or 1.04}, Back) end
-                local g = ensureGlow()
-                moveGlow(p)
-                tw(g, 0.25, {Size = UDim2.fromOffset(90, 90)})
-            else
-                tw(stroke, 0.25, {Transparency = 0.45})
-            end
-        end
-
-        local function holdOff()
-            if kind == "Button" then
-                if scale then tw(scale, 0.35, {Scale = 1}, Back) end
-                if glow then tw(glow, 0.3, {Size = UDim2.fromOffset(0, 0)}) end
-            else
-                tw(stroke, 0.35, {Transparency = 1})
-            end
-        end
-
-        local moveConn, endConn
-
-        local function release()
-            token = nil
-            if moveConn then moveConn:Disconnect() moveConn = nil end
-            if endConn then endConn:Disconnect() endConn = nil end
-            if held then holdOff() end
-            if wrap and dragging then
-                main.Interactable = true
-                if FX.ReducedMotion then
-                    main.Position, main.Rotation = UDim2.new(), 0
-                else
-                    tw(main, 0.7, {Position = UDim2.new(), Rotation = 0}, Elastic, Out) -- spring
-                end
-            end
-            held, dragging, active = false, false, nil
-        end
-
-        local function onMove(input)
-            if not active then return end
-            if input ~= active and input.UserInputType ~= MMOVE then return end
-            local p = Vector2.new(input.Position.X, input.Position.Y)
-            if held and glow then moveGlow(p) end
-            if kind == "Button" and opts.Drag ~= false then
-                local d = p - start
-                if not dragging and d.Magnitude > 6 then
-                    wrap = wrap or getShifter(main)
-                    if wrap then
-                        dragging = true
-                        main.Interactable = false -- drag tidak boleh dianggap klik
-                        if not held then holdOn(start) end
-                    end
-                end
-                if dragging and wrap then
-                    local s = pscale()
-                    main.Position = UDim2.fromOffset(math.clamp(d.X / s, -14, 14) * 0.5, 0)
-                    main.Rotation = math.clamp(d.Y / s * 0.05, -1.2, 1.2)
-                    moveGlow(p)
-                end
-            end
-        end
-
-        local function onEnd(input)
-            if not active then return end
-            if input == active or (active.UserInputType == MB1 and input.UserInputType == MB1) then
-                release()
-            end
-        end
-
-        main.InputBegan:Connect(function(input)
-            if input.UserInputType ~= MB1 and input.UserInputType ~= TOUCH then return end
-            if active then return end
-            active = input
-            held, dragging = false, false
-            start = Vector2.new(input.Position.X, input.Position.Y)
-            FX.Ripple(layer, start)
-            local my = {}
-            token = my
-            moveConn = UIS.InputChanged:Connect(onMove)
-            endConn = UIS.InputEnded:Connect(onEnd)
-            task.delay(opts.HoldTime or 0.22, function()
-                if token == my and active and not dragging then
-                    holdOn(start)
-                end
-            end)
-        end)
-
-        main.Destroying:Once(function() FX.Mains[main] = nil end)
+        return main
     end
 
     -- ------------------------------------------------------------------
@@ -13998,27 +13871,9 @@ do
     local EDGE_TYPES = {Dropdown = true, Input = true, Colorpicker = true, Keybind = true, Code = true}
 
     local function post(name, el)
-        if typeof(el) ~= "table" then return end
-        local main = frameOf(el)
-        if not main then return end
-        local tp = el.__type or name
-        if SKIP_FX[tp] then
-            return
-        elseif tp == "Button" then
-            FX.Attach(main, {Kind = "Button"})
-        elseif tp == "Toggle" then
-            FX.Attach(main, {Kind = "Plain"})
-            if not (aa.Window and aa.Window.NewElements) then
-                pcall(toggleFX, main) -- window NewElements sudah punya animasi knob + drag sendiri
-            end
-        elseif tp == "Slider" then
-            FX.Attach(main, {Kind = "Plain"})
-            pcall(sliderFX, el)
-        elseif EDGE_TYPES[tp] then
-            FX.Attach(main, {Kind = "Edge"})
-        else
-            FX.Attach(main, {Kind = "Plain"})
-        end
+        -- Extension tidak menambahkan Ripple/Glow/Scale/Edge pada elemen native.
+        -- Event dan callback asli WindUI tetap dipertahankan.
+        return
     end
 
     local origLoad = EL.Load
@@ -14041,26 +13896,16 @@ do
     -- Tab: ripple + edge light, transisi slide-fade, swipe antar-tab
     local origTabNew = TabModule.New
     TabModule.New = function(cfg, ...)
-        local tab = origTabNew(cfg, ...)
-        task.defer(function()
-            local ok, m = pcall(function() return tab.UIElements.Main end)
-            if ok and m then FX.Attach(m, {Kind = "Edge", Radius = 12}) end
-        end)
-        return tab
+        return origTabNew(cfg, ...)
     end
 
     local origSelect = TabModule.SelectTab
-    local lastIndex
     TabModule.SelectTab = function(self, idx)
-        local prev = lastIndex
-        origSelect(self, idx)
-        lastIndex = idx
-        local c = TabModule.Containers[idx]
-        if c and prev and prev ~= idx and not FX.ReducedMotion then
-            local dir = idx > prev and 1 or -1
-            c.Position = UDim2.new(0.05 * dir, 0, 0, 0)
-            tw(c, 0.32, {Position = UDim2.new()}, Quint, Out)
+        local result = origSelect(self, idx)
+        for _, listener in ipairs(FX.TabListeners) do
+            pcall(listener, idx)
         end
+        return result
     end
 
     function FX.NoSwipe(obj)
@@ -14979,7 +14824,9 @@ do
         local prevNew = TabModule.New
         TabModule.New = function(...)
             local t = prevNew(...)
-            task.defer(function() if FX.RefreshBars then FX.RefreshBars() end end)
+            task.defer(function()
+                if FX.RefreshBars then pcall(FX.RefreshBars) end
+            end)
             return t
         end
     end
@@ -15189,83 +15036,190 @@ do
     -- ------------------------------------------------------------------
     -- D) BOTTOM BAR (alternatif sidebar di mobile, gaya app iOS)
     -- ------------------------------------------------------------------
-    local barState = {}
+    barStates = setmetatable({}, {__mode = "k"})
     local function bottomBar(win, enable)
+        if not win or not win.UIElements or not win.UIElements.Main then return end
+        local state = barStates[win]
+
         if not enable then
-            if barState.bar then barState.bar:Destroy() end
-            barState = {}
+            if state and state.bar then state.bar:Destroy() end
+            barStates[win] = nil
             win.UIElements.SideBarContainer.Visible = true
             local top = win.Topbar.Height
             win.UIElements.MainBar.Size = UDim2.new(1, -(win.SideBarWidth or 200), 1, -top)
             win.UIElements.MainBar.Position = UDim2.new(1, 0, 1, 0)
-            FX.RefreshBars = nil
+            FX.RefreshBars = function()
+                for _, other in pairs(barStates) do
+                    if other.refresh then other.refresh() end
+                end
+            end
             return
         end
-        if barState.bar then return end
-        local barH = 58
-        local pad = 8
+        if state and state.bar and state.bar.Parent then return end
+
+        local barH, pad = 66, 9
         local top = win.Topbar.Height
         win.UIElements.SideBarContainer.Visible = false
-        win.UIElements.MainBar.Size = UDim2.new(1, 0, 1, -top - barH - pad)
-        win.UIElements.MainBar.Position = UDim2.new(1, 0, 1, -barH - pad)
+        win.UIElements.MainBar.Size = UDim2.new(1, 0, 1, -top - barH - pad * 2)
+        win.UIElements.MainBar.Position = UDim2.new(1, 0, 1, -barH - pad * 2)
 
-        local bar = Box(win.UIElements.Main, 22, "Text", 0.9, {
-            Name = "FXBottomBar", Size = UDim2.new(1, -pad * 2, 0, barH), AnchorPoint = Vector2.new(0.5, 1),
-            Position = UDim2.new(0.5, 0, 1, -pad), ZIndex = 30, ClipsDescendants = true,
+        local bar = Box(win.UIElements.Main, 999, "Text", 0.91, {
+            Name = "FXBottomBar",
+            Size = UDim2.new(1, -pad * 2, 0, barH),
+            AnchorPoint = Vector2.new(0.5, 1),
+            Position = UDim2.new(0.5, 0, 1, -pad),
+            ZIndex = 30,
+            ClipsDescendants = true,
         })
-        New("UIStroke", {Color = Color3.new(1, 1, 1), Transparency = 0.8, Thickness = 1, Parent = bar})
+        New("UIStroke", {
+            Color = Color3.new(1, 1, 1),
+            Transparency = 0.78,
+            Thickness = 1,
+            Parent = bar,
+        })
+
         local scroll = New("ScrollingFrame", {
-            BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ScrollBarThickness = 0, BorderSizePixel = 0,
-            AutomaticCanvasSize = Enum.AutomaticSize.X, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.X,
-            ZIndex = 31, Parent = bar,
-        }, {New("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4)})})
-        barState.bar, barState.scroll, barState.buttons = bar, scroll, {}
+            Name = "TabsScroll",
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Position = UDim2.fromScale(0, 0),
+            ScrollBarThickness = 0,
+            BorderSizePixel = 0,
+            AutomaticCanvasSize = Enum.AutomaticSize.X,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            ScrollingDirection = Enum.ScrollingDirection.X,
+            ScrollingEnabled = true,
+            Active = true,
+            ZIndex = 31,
+            Parent = bar,
+        })
+        local layout = New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 5),
+            Parent = scroll,
+        })
+        New("UIPadding", {
+            PaddingLeft = UDim.new(0, 7),
+            PaddingRight = UDim.new(0, 7),
+            PaddingTop = UDim.new(0, 5),
+            PaddingBottom = UDim.new(0, 5),
+            Parent = scroll,
+        })
+
+        state = {bar = bar, scroll = scroll, buttons = {}, window = win}
+        barStates[win] = state
+
+        local function getTabs()
+            local tabs = {}
+            for idx, tab in pairs(TabModule.Tabs or {}) do
+                if type(idx) == "number" and type(tab) == "table" then
+                    table.insert(tabs, {Index = idx, Data = tab})
+                end
+            end
+            table.sort(tabs, function(a, b) return a.Index < b.Index end)
+            return tabs
+        end
 
         local function sync(idx)
             idx = idx or TabModule.SelectedTab
-            for i, b in pairs(barState.buttons) do
-                local on = i == idx
-                tw(b.pill, 0.25, {BackgroundTransparency = on and 0.82 or 1})
-                tw(b.label, 0.2, {TextTransparency = on and 0 or 0.45})
-                if b.icon and b.icon:FindFirstChild "ImageLabel" then
-                    tw(b.icon.ImageLabel, 0.2, {ImageTransparency = on and 0 or 0.45})
+            for tabIndex, item in pairs(state.buttons) do
+                local active = tabIndex == idx
+                item.pill.BackgroundTransparency = active and 0.79 or 1
+                item.label.TextTransparency = active and 0 or 0.38
+                if item.icon then item.icon.ImageTransparency = active and 0 or 0.35 end
+                if active and item.btn.Parent then
+                    local x = item.btn.AbsolutePosition.X - scroll.AbsolutePosition.X
+                    local w = item.btn.AbsoluteSize.X
+                    local viewW = scroll.AbsoluteSize.X
+                    if x < 0 then
+                        scroll.CanvasPosition = Vector2.new(math.max(0, scroll.CanvasPosition.X + x - 8), 0)
+                    elseif x + w > viewW then
+                        scroll.CanvasPosition = Vector2.new(scroll.CanvasPosition.X + x + w - viewW + 8, 0)
+                    end
                 end
             end
         end
 
-        FX.RefreshBars = function()
+        local function refresh()
             if not bar.Parent then return end
-            for _, b in pairs(barState.buttons) do b.btn:Destroy() end
-            barState.buttons = {}
-            local n = 0
-            for idx, tab in pairs(TabModule.Tabs) do
-                n += 1
-                local btn = New("TextButton", {Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.new(0, math.max(64, 300 / math.max(#TabModule.Tabs, 1)), 1, -8), LayoutOrder = idx, ZIndex = 32, Parent = scroll})
-                local pill = Box(btn, 16, "Text", 1, {Size = UDim2.fromScale(1, 1), ZIndex = 32})
+            for _, item in pairs(state.buttons) do
+                if item.btn then item.btn:Destroy() end
+            end
+            state.buttons = {}
+
+            local tabs = getTabs()
+            local count = #tabs
+            local available = math.max(72, math.floor((scroll.AbsoluteSize.X - 28) / math.max(math.min(count, 4), 1)))
+            local tabWidth = math.clamp(available, 72, 104)
+
+            for order, entry in ipairs(tabs) do
+                local idx, tab = entry.Index, entry.Data
+                local btn = New("TextButton", {
+                    Name = "Tab_" .. tostring(idx),
+                    Text = "",
+                    AutoButtonColor = false,
+                    BackgroundTransparency = 1,
+                    Size = UDim2.fromOffset(tabWidth, 54),
+                    LayoutOrder = order,
+                    ZIndex = 32,
+                    Parent = scroll,
+                })
+                local pill = Box(btn, 999, "Text", 1, {
+                    Size = UDim2.fromScale(1, 1),
+                    ZIndex = 32,
+                })
                 local icon
                 if tab.Icon then
-                    icon = Creator.Image(tab.Icon, tab.Icon .. ":" .. tab.Title, 0, win.Folder, "BottomBar", true, tab.IconThemed)
-                    icon.Size = UDim2.fromOffset(22, 22)
-                    icon.AnchorPoint = Vector2.new(0.5, 0)
-                    icon.Position = UDim2.new(0.5, 0, 0, 6)
-                    icon.ZIndex = 33
-                    icon.Parent = btn
+                    local ok, result = pcall(function()
+                        return Creator.Image(tab.Icon, tostring(tab.Icon) .. ":" .. tostring(tab.Title or ""), 0, win.Folder, "BottomBar", true, tab.IconThemed)
+                    end)
+                    if ok then
+                        icon = result
+                        icon.Size = UDim2.fromOffset(21, 21)
+                        icon.AnchorPoint = Vector2.new(0.5, 0)
+                        icon.Position = UDim2.new(0.5, 0, 0, 7)
+                        icon.ZIndex = 33
+                        icon.Parent = btn
+                    end
                 end
-                local label = Txt(btn, tab.Title, 11, {
-                    Size = UDim2.new(1, -4, 0, 14), Position = UDim2.new(0.5, 0, 1, -6), AnchorPoint = Vector2.new(0.5, 1),
-                    TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 33,
+                local label = Txt(btn, tostring(tab.Title or ("Tab " .. tostring(idx))), 11, {
+                    Size = UDim2.new(1, -6, 0, 15),
+                    Position = UDim2.new(0.5, 0, 1, -5),
+                    AnchorPoint = Vector2.new(0.5, 1),
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                    ZIndex = 33,
                 })
-                if not icon then label.Position, label.Size, label.TextSize = UDim2.fromScale(0.5, 0.5), UDim2.new(1, -4, 1, 0), 13 label.AnchorPoint = Vector2.new(0.5, 0.5) end
-                FX.Attach(btn, {Kind = "Plain", Radius = 16})
+                if not icon then
+                    label.Position = UDim2.fromScale(0.5, 0.5)
+                    label.Size = UDim2.new(1, -6, 1, 0)
+                    label.TextSize = 13
+                    label.AnchorPoint = Vector2.new(0.5, 0.5)
+                end
+
                 Creator.AddSignal(btn.MouseButton1Click, function()
-                    if not tab.Locked then TabModule:SelectTab(idx) end
+                    if not tab.Locked then
+                        TabModule:SelectTab(idx)
+                    end
                 end)
-                barState.buttons[idx] = {btn = btn, pill = pill, label = label, icon = icon}
+                state.buttons[idx] = {btn = btn, pill = pill, label = label, icon = icon}
             end
             sync()
         end
-        table.insert(FX.TabListeners, function(idx) if bar.Parent then sync(idx) end end)
-        FX.RefreshBars()
+
+        state.refresh = refresh
+        table.insert(FX.TabListeners, function(idx)
+            if bar.Parent then sync(idx) end
+        end)
+        FX.RefreshBars = function()
+            for _, other in pairs(barStates) do
+                if other.refresh then other.refresh() end
+            end
+        end
+        refresh()
     end
 
     -- ------------------------------------------------------------------
@@ -15378,7 +15332,10 @@ do
             if on then sidebarCollapsible(win, o) else sidebarFixed(win) end
         end
         win.SetBottomBar = function(_, on) bottomBar(win, on and true or false) end
-        win.RefreshBottomBar = function() if FX.RefreshBars then FX.RefreshBars() end end
+        win.RefreshBottomBar = function()
+            local state = barStates[win]
+            if state and state.refresh then state.refresh() end
+        end
         win.SetSwipeTabs = function(_, on) FX.Swipe = on ~= false end
 
         function win.Console(_, ccfg)
