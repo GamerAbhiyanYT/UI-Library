@@ -11343,35 +11343,52 @@ type ConfigType__DARKLUA_TYPE_a = {
                                 }),
                         }),
                 })
-            an.AddSignal(aw.UIElements.Main.Main.Topbar.Left:GetPropertyChangedSignal "AbsoluteSize", function()
-                    local z = 0
-                    local A = aw.UIElements.Main.Main.Topbar.Right.UIListLayout.AbsoluteContentSize.X
-                    / av.WindUI.UIScale
-                    z = aw.UIElements.Main.Main.Topbar.Left.AbsoluteSize.X / av.WindUI.UIScale
-                    if aw.Topbar.ButtonsType ~= "Default" then
-                        z = z + A + aw.UIPadding - 4
+            -- Layout topbar dihitung ulang dari aw.Topbar.ButtonsType setiap kali dipanggil,
+            -- sehingga gaya "Mac" / "Default" bisa diganti saat runtime (aw:SetTopbarType).
+            -- (dibungkus do-block agar tidak menambah jumlah local di fungsi Window)
+            do
+                local topbarFrame = aw.UIElements.Main.Main.Topbar
+                local leftOrigPosition = topbarFrame.Left.Position
+                for _, child in ipairs(topbarFrame:GetChildren()) do
+                    if child:IsA "UIPadding" and child.PaddingRight == UDim.new(0, 8) then
+                        aw.__TopbarPadding = child
                     end
-                    aw.UIElements.Main.Main.Topbar.Center.Position =
-                    UDim2.new(0, z + (aw.UIPadding / av.WindUI.UIScale), 0.5, 0)
-                    aw.UIElements.Main.Main.Topbar.Center.Size = UDim2.new(
+                end
+                function aw.LayoutTopbar()
+                    local top = aw.UIElements.Main and aw.UIElements.Main.Main and aw.UIElements.Main.Main.Topbar
+                    if not top then return end
+                    local scale = av.WindUI.UIScale
+                    local isMac = aw.Topbar.ButtonsType ~= "Default"
+                    local A = top.Right.UIListLayout.AbsoluteContentSize.X / scale
+                    local z = top.Left.AbsoluteSize.X / scale
+                    if isMac then
+                        z = z + A + aw.UIPadding - 4
+                        top.Left.Position = UDim2.new(0, (top.Right.AbsoluteSize.X / scale) + aw.UIPadding - 4, 0, 0)
+                    else
+                        top.Left.Position = leftOrigPosition
+                    end
+                    top.Center.Position = UDim2.new(0, z + (aw.UIPadding / scale), 0.5, 0)
+                    top.Center.Size = UDim2.new(
                         1,
                         - z
-                        - (aw.UIPadding / av.WindUI.UIScale)
-                        - (aw.Topbar.ButtonsType == "Default" and A + aw.UIPadding or 0),
+                        - (aw.UIPadding / scale)
+                        - (isMac and 0 or A + aw.UIPadding),
                         1,
                         0
                     )
-                end)
-            if aw.Topbar.ButtonsType ~= "Default" then
-                an.AddSignal(aw.UIElements.Main.Main.Topbar.Right:GetPropertyChangedSignal "AbsoluteSize", function()
-                        aw.UIElements.Main.Main.Topbar.Left.Position = UDim2.new(
-                            0,
-                            (aw.UIElements.Main.Main.Topbar.Right.AbsoluteSize.X / av.WindUI.UIScale) + aw.UIPadding - 4,
-                            0,
-                            0
-                        )
-                    end)
+                end
+                an.AddSignal(topbarFrame.Left:GetPropertyChangedSignal "AbsoluteSize", function() aw.LayoutTopbar() end)
+                an.AddSignal(topbarFrame.Right:GetPropertyChangedSignal "AbsoluteSize", function() aw.LayoutTopbar() end)
             end
+            -- Tombol bawaan: dipakai saat gaya topbar diganti (Mac <-> Default)
+            aw.__BuiltinTopbar = {
+                Fullscreen = {
+                    Icon = function(kind) return kind == "Mac" and "rbxassetid://127426072704909" or "maximize" end,
+                    Order = {Default = 998, Mac = 999}, Themed = true, Color = "#60C762", MacSize = 9,
+                },
+                Minimize = {Icon = function() return "minus" end, Order = {Default = 997, Mac = 998}, Color = "#F4C948"},
+                Close = {Icon = function() return "x" end, Order = {Default = 999, Mac = 997}, Color = "#F4695F"},
+            }
             function aw.CreateTopbarButton(z, A, B, C, F, G, H, J)
                 local L = an.Image(
                     B,
@@ -11429,6 +11446,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                 aw.TopBarButtons[100 - F] = {
                     Name = A,
                     Object = N,
+                    -- data untuk membangun ulang tombol saat gaya topbar diganti
+                    Icon = B, Callback = C, Order = F, Themed = G, Color = H, IconSize = J,
+                    Builtin = aw.__TopbarReady ~= true and aw.__BuiltinTopbar ~= nil and aw.__BuiltinTopbar[A] ~= nil,
                 }
                 an.AddSignal(M.MouseButton1Click, function()
                         if C then
@@ -11502,6 +11522,53 @@ type ConfigType__DARKLUA_TYPE_a = {
                     A.Color,
                     A.IconSize
                 )
+            end
+            -- Ganti gaya topbar saat runtime: "Mac" (titik warna di kiri) atau "Default" (ikon di kanan)
+            function aw.SetTopbarType(_, kind, force)
+                if kind ~= "Mac" and kind ~= "Default" then return false end
+                if aw.Topbar.ButtonsType == kind and not force then return true end
+                local top = aw.UIElements.Main and aw.UIElements.Main.Main and aw.UIElements.Main.Main.Topbar
+                if not top then return false end
+
+                local specs = {}
+                for _, b in pairs(aw.TopBarButtons) do
+                    if b.Order ~= nil then table.insert(specs, b) end
+                end
+
+                aw.Topbar.ButtonsType = kind
+                aw.TopBarButtonIconSize = av.TopBarButtonIconSize or (kind == "Mac" and 11 or 16)
+                aw.TopBarButtons = {}
+
+                for _, b in ipairs(specs) do
+                    local wasVisible = b.Object.Visible
+                    b.Object:Destroy()
+                    local icon, order, themed, color, size = b.Icon, b.Order, b.Themed, b.Color, b.IconSize
+                    local builtin = b.Builtin and aw.__BuiltinTopbar[b.Name]
+                    if builtin then
+                        icon = builtin.Icon(kind)
+                        order = builtin.Order[kind]
+                        themed = builtin.Themed
+                        color = Color3.fromHex(builtin.Color)
+                        size = kind == "Mac" and builtin.MacSize or nil
+                    end
+                    local ok, btn = pcall(aw.CreateTopbarButton, aw, b.Name, icon, b.Callback, order, themed, color, size)
+                    if ok and btn and btn.Parent then
+                        btn.Parent.Visible = wasVisible
+                        local entry = aw.TopBarButtons[100 - order]
+                        if entry then entry.Builtin = b.Builtin end
+                    end
+                end
+
+                local isDefault = kind == "Default"
+                top.Right.Position = UDim2.new(isDefault and 1 or 0, 0, 0.5, 0)
+                top.Right.AnchorPoint = Vector2.new(isDefault and 1 or 0, 0.5)
+                top.Right.UIListLayout.Padding = UDim.new(0, isDefault and 9 or 0)
+                if aw.__TopbarPadding then
+                    aw.__TopbarPadding.PaddingLeft = UDim.new(0, isDefault and aw.UIPadding or aw.UIPadding - 2)
+                end
+                aw.LayoutTopbar()
+                task.defer(aw.LayoutTopbar)
+                return true
             end
             local z = an.Drag(
                 aw.UIElements.Main,
@@ -12309,6 +12376,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     end
                 end
             end
+            aw.__TopbarReady = true
             return aw
         end end end
 local aa = {
@@ -14974,75 +15042,24 @@ do
     end
 
     -- ------------------------------------------------------------------
-    -- C) SIDEBAR COLLAPSIBLE  (ikon saja ±60px, melebar saat hover / tap)
-    -- ------------------------------------------------------------------
-    local function sidebarCollapsible(win, opts)
-        opts = type(opts) == "table" and opts or {}
-        local sc, mb = win.UIElements.SideBarContainer, win.UIElements.MainBar
-        if not (sc and mb) or win.__FXCollapse then return end
-        local full = win.SideBarWidth or 200
-        local small = opts.CollapsedWidth or 60
-        local expanded = false
-        local function setWidth(w)
-            -- Sidebar collapse hanya mengubah lebar; posisi, anchor, dan tinggi
-            -- tetap mengikuti layout asli WindUI. Jangan jalankan saat BottomBar aktif.
-            local activeBar = barStates and barStates[win]
-            if activeBar and activeBar.bar and activeBar.bar.Parent then return end
-            local sideSize = sc.Size
-            local mainSize = mb.Size
-            tw(sc, 0.28, {Size = UDim2.new(0, w, sideSize.Y.Scale, sideSize.Y.Offset)})
-            tw(mb, 0.28, {Size = UDim2.new(1, -w, mainSize.Y.Scale, mainSize.Y.Offset)})
-        end
-        local function expand(v)
-            if v == expanded then return end
-            expanded = v
-            setWidth(v and full or small)
-        end
-        win.__FXCollapse = {Expand = expand, Enabled = true}
-        sc.ClipsDescendants = true
-        setWidth(small)
-
-        local mouse = Players.LocalPlayer:GetMouse()
-        local outsideSince
-        local conn = RunService.Heartbeat:Connect(function()
-            if not win.__FXCollapse or not win.__FXCollapse.Enabled or not sc.Parent then return end
-            if FX.Mobile then return end
-            local p, s = sc.AbsolutePosition, sc.AbsoluteSize
-            local inside = mouse.X >= p.X and mouse.X <= p.X + s.X and mouse.Y >= p.Y and mouse.Y <= p.Y + s.Y
-            if inside then
-                outsideSince = nil
-                expand(true)
-            else
-                outsideSince = outsideSince or os.clock()
-                if os.clock() - outsideSince > 0.25 then expand(false) end
-            end
-        end)
-        -- sentuh: tap area ikon -> melebar ; pilih tab -> menciut ; tap konten -> menciut
-        sc.InputBegan:Connect(function(i)
-            if i.UserInputType == TOUCH then expand(true) end
-        end)
-        mb.InputBegan:Connect(function(i)
-            if i.UserInputType == TOUCH and expanded then expand(false) end
-        end)
-        table.insert(FX.TabListeners, function()
-            if FX.Mobile and expanded then expand(false) end
-        end)
-        win.__FXCollapse.Conn = conn
-    end
-
-    local function sidebarFixed(win)
-        local c = win.__FXCollapse
-        if not c then return end
-        c.Enabled = false
-        if c.Conn then c.Conn:Disconnect() end
-        c.Expand(true)
-        win.__FXCollapse = nil
-    end
-
-    -- ------------------------------------------------------------------
-    -- D) BOTTOM BAR (alternatif sidebar di mobile, gaya app iOS)
+    -- C) TAB LAYOUT : "Sidebar" (bawaan WindUI) atau "BottomBar" (kapsul gaya iOS)
+    --    Tab di bottom bar otomatis bisa digeser kiri-kanan (sentuh, drag mouse).
+    --    Sidebar selalu tampil penuh (ikon + judul, daftar lurus ke bawah).
     -- ------------------------------------------------------------------
     barStates = setmetatable({}, {__mode = "k"})
+
+    local function removeTabListener(fn)
+        for i = #FX.TabListeners, 1, -1 do
+            if FX.TabListeners[i] == fn then table.remove(FX.TabListeners, i) end
+        end
+    end
+
+    FX.RefreshBars = function()
+        for _, other in pairs(barStates) do
+            if other.refresh then other.refresh() end
+        end
+    end
+
     local function bottomBar(win, enable)
         if not win or not win.UIElements or not win.UIElements.Main then return end
         local main = win.UIElements.Main
@@ -15053,24 +15070,15 @@ do
         local state = barStates[win]
         if not enable then
             if state then
+                if state.listener then removeTabListener(state.listener) end
+                for _, c in ipairs(state.conns or {}) do pcall(function() c:Disconnect() end) end
                 if state.bar then state.bar:Destroy() end
-                if state.sizeChanged then
-                    mainBar.Size = state.originalMainSize
-                    mainBar.Position = state.originalMainPosition
-                    mainBar.AnchorPoint = state.originalMainAnchor
-                else
-                    local top = win.Topbar and win.Topbar.Height or 0
-                    mainBar.Size = UDim2.new(1, -(win.SideBarWidth or 200), 1, -top)
-                    mainBar.Position = UDim2.new(1, 0, 1, 0)
-                end
+                mainBar.Size = state.originalMainSize
+                mainBar.Position = state.originalMainPosition
+                mainBar.AnchorPoint = state.originalMainAnchor
                 barStates[win] = nil
             end
             sideBar.Visible = true
-            FX.RefreshBars = function()
-                for _, other in pairs(barStates) do
-                    if other.refresh then other.refresh() end
-                end
-            end
             return
         end
         if state and state.bar and state.bar.Parent then return end
@@ -15082,8 +15090,8 @@ do
             originalMainSize = mainBar.Size,
             originalMainPosition = mainBar.Position,
             originalMainAnchor = mainBar.AnchorPoint,
-            sizeChanged = true,
             buttons = {},
+            conns = {},
         }
         barStates[win] = state
 
@@ -15110,6 +15118,7 @@ do
             Parent = bar,
         })
 
+        -- Daftar tab: ScrollingFrame horizontal (built-in, bisa digeser kiri-kanan)
         local scroll = New("ScrollingFrame", {
             Name = "TabsScroll",
             BackgroundTransparency = 1,
@@ -15120,12 +15129,13 @@ do
             AutomaticCanvasSize = Enum.AutomaticSize.X,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             ScrollingDirection = Enum.ScrollingDirection.X,
+            ElasticBehavior = Enum.ElasticBehavior.Always,
             ScrollingEnabled = true,
             Active = true,
             ZIndex = 101,
             Parent = bar,
         })
-        local layout = New("UIListLayout", {
+        New("UIListLayout", {
             FillDirection = Enum.FillDirection.Horizontal,
             HorizontalAlignment = Enum.HorizontalAlignment.Left,
             VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -15141,6 +15151,32 @@ do
             Parent = scroll,
         })
         state.scroll = scroll
+
+        -- Geser dengan mouse (PC). Sentuhan (HP) sudah ditangani ScrollingFrame.
+        local dragging, dragStartX, dragStartCanvas, dragMoved, lastDragEnd = false, 0, 0, false, 0
+        local function maxCanvas()
+            return math.max(0, scroll.AbsoluteCanvasSize.X - scroll.AbsoluteSize.X)
+        end
+        table.insert(state.conns, scroll.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging, dragMoved = true, false
+                dragStartX, dragStartCanvas = input.Position.X, scroll.CanvasPosition.X
+            end
+        end))
+        table.insert(state.conns, UIS.InputChanged:Connect(function(input)
+            if not dragging or input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+            local dx = input.Position.X - dragStartX
+            if not dragMoved and math.abs(dx) > 6 then dragMoved = true end
+            if dragMoved then
+                scroll.CanvasPosition = Vector2.new(math.clamp(dragStartCanvas - dx, 0, maxCanvas()), 0)
+            end
+        end))
+        table.insert(state.conns, UIS.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
+                dragging = false
+                if dragMoved then lastDragEnd = os.clock() end
+            end
+        end))
 
         local function getTabs()
             local tabs = {}
@@ -15231,6 +15267,8 @@ do
                     label.AnchorPoint = Vector2.new(0.5, 0.5)
                 end
                 Creator.AddSignal(btn.MouseButton1Click, function()
+                    -- abaikan "klik" yang sebenarnya akhir dari gerakan menggeser
+                    if os.clock() - lastDragEnd < 0.2 then return end
                     if not tab.Locked then TabModule:SelectTab(idx) end
                 end)
                 state.buttons[idx] = {btn = btn, pill = pill, label = label, icon = icon}
@@ -15239,15 +15277,19 @@ do
         end
 
         state.refresh = refresh
-        table.insert(FX.TabListeners, function(idx)
-            if bar.Parent then sync(idx) end
-        end)
-        FX.RefreshBars = function()
-            for _, other in pairs(barStates) do
-                if other.refresh then other.refresh() end
-            end
+        state.listener = function(idx)
+            if bar.Parent then sync(idx) else removeTabListener(state.listener) end
         end
+        table.insert(FX.TabListeners, state.listener)
         refresh()
+    end
+
+    local function setTabLayout(win, mode)
+        if mode == "BottomBar" then
+            bottomBar(win, true)
+        else
+            bottomBar(win, false)
+        end
     end
 
     -- ------------------------------------------------------------------
@@ -15332,8 +15374,10 @@ do
 
     -- ------------------------------------------------------------------
     -- G) CreateWindow wrapper : opsi baru + method Window
-    --    Density, ReducedMotion, Topbar.ButtonsType = "Glass"|"Windows"|"Minimal",
-    --    SidebarCollapsible, BottomBar = true | "Auto"
+    --    Density, ReducedMotion,
+    --    Topbar.ButtonsType = "Mac" | "Default" (atau "Glass"|"Windows"|"Minimal"),
+    --    TabLayout = "Sidebar" | "BottomBar" | "Auto"   (BottomBar = true tetap didukung)
+    --    Method: Window:SetTabLayout(mode), Window:SetTopbarStyle(style)
     -- ------------------------------------------------------------------
     local origCreate = aa.CreateWindow
     function aa.CreateWindow(self, cfg)
@@ -15355,13 +15399,30 @@ do
         win.SetDensity = function(_, m) return FX.SetDensity(m) end
         win.GetDensity = function() return FX.Density end
         win.SetReducedMotion = function(_, v) return FX.SetReducedMotion(v) end
-        win.SetTopbarStyle = function(_, s) pcall(styleTopbar, win, s) end
-        win.SetSidebarCollapsible = function(_, on, o)
-            local current = barStates and barStates[win]
-            if on and current and current.bar and current.bar.Parent then return end
-            if on then sidebarCollapsible(win, o) else sidebarFixed(win) end
+        -- Gaya topbar: "Mac" | "Default" (ganti sungguhan saat runtime),
+        -- plus varian lama "Glass" (Mac + pill), "Windows" / "Minimal" (Default + gaya khusus).
+        win.SetTopbarStyle = function(_, s)
+            local kind
+            if s == "Mac" or s == "Glass" then kind = "Mac"
+            elseif s == "Default" or s == "Windows" or s == "Minimal" then kind = "Default" end
+            if not kind then return end
+            local decorated = s == "Glass" or s == "Windows" or s == "Minimal"
+            -- build ulang tombol bila dekorasi lama perlu dibersihkan atau tipe berubah
+            pcall(win.SetTopbarType, win, kind, win.__FXTopbarDecor == true or decorated)
+            pcall(styleTopbar, win, s)
+            win.__FXTopbarDecor = decorated
+            pcall(win.LayoutTopbar)
         end
-        win.SetBottomBar = function(_, on) bottomBar(win, on and true or false) end
+        win.GetTopbarStyle = function() return win.Topbar.ButtonsType end
+        -- Tata letak tab: "Sidebar" (daftar vertikal penuh) atau "BottomBar" (kapsul bawah, bisa digeser)
+        win.SetTabLayout = function(_, mode) setTabLayout(win, mode) end
+        win.GetTabLayout = function()
+            local st = barStates[win]
+            return (st and st.bar and st.bar.Parent) and "BottomBar" or "Sidebar"
+        end
+        win.SetBottomBar = function(_, on) setTabLayout(win, on and "BottomBar" or "Sidebar") end
+        -- Sidebar collapsible sudah dihapus. Dibiarkan sebagai no-op agar script lama tidak error.
+        win.SetSidebarCollapsible = function() end
         win.RefreshBottomBar = function()
             local state = barStates[win]
             if state and state.refresh then state.refresh() end
@@ -15378,15 +15439,18 @@ do
         end
 
         if style then
+            win.__FXTopbarDecor = true
             pcall(styleTopbar, win, style)
             task.defer(pcall, styleTopbar, win, style)
         end
-        local bb = cfg.BottomBar
-        if bb == "Auto" then bb = FX.Mobile end
-        if bb then
-            task.defer(function() pcall(bottomBar, win, true) end)
-        elseif cfg.SidebarCollapsible then
-            task.defer(function() pcall(sidebarCollapsible, win, typeof(cfg.SidebarCollapsible) == "table" and cfg.SidebarCollapsible or nil) end)
+        local layout = cfg.TabLayout
+        if layout == nil and cfg.BottomBar ~= nil then
+            layout = (cfg.BottomBar == "Auto" or cfg.BottomBar == true) and cfg.BottomBar or "Sidebar"
+            if layout == true then layout = "BottomBar" end
+        end
+        if layout == "Auto" then layout = FX.Mobile and "BottomBar" or "Sidebar" end
+        if layout == "BottomBar" then
+            task.defer(function() pcall(setTabLayout, win, "BottomBar") end)
         end
         if cfg.Theme == "Aurora" then task.defer(startAurora, win) end
         return win
