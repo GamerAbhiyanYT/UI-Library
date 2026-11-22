@@ -14984,8 +14984,14 @@ do
         local small = opts.CollapsedWidth or 60
         local expanded = false
         local function setWidth(w)
-            tw(sc, 0.28, {Size = UDim2.new(0, w, sc.Size.Y.Scale, sc.Size.Y.Offset)})
-            tw(mb, 0.28, {Size = UDim2.new(1, -w, mb.Size.Y.Scale, mb.Size.Y.Offset)})
+            -- Sidebar collapse hanya mengubah lebar; posisi, anchor, dan tinggi
+            -- tetap mengikuti layout asli WindUI. Jangan jalankan saat BottomBar aktif.
+            local activeBar = barStates and barStates[win]
+            if activeBar and activeBar.bar and activeBar.bar.Parent then return end
+            local sideSize = sc.Size
+            local mainSize = mb.Size
+            tw(sc, 0.28, {Size = UDim2.new(0, w, sideSize.Y.Scale, sideSize.Y.Offset)})
+            tw(mb, 0.28, {Size = UDim2.new(1, -w, mainSize.Y.Scale, mainSize.Y.Offset)})
         end
         local function expand(v)
             if v == expanded then return end
@@ -15039,15 +15045,27 @@ do
     barStates = setmetatable({}, {__mode = "k"})
     local function bottomBar(win, enable)
         if not win or not win.UIElements or not win.UIElements.Main then return end
-        local state = barStates[win]
+        local main = win.UIElements.Main
+        local mainBar = win.UIElements.MainBar
+        local sideBar = win.UIElements.SideBarContainer
+        if not (mainBar and sideBar) then return end
 
+        local state = barStates[win]
         if not enable then
-            if state and state.bar then state.bar:Destroy() end
-            barStates[win] = nil
-            win.UIElements.SideBarContainer.Visible = true
-            local top = win.Topbar.Height
-            win.UIElements.MainBar.Size = UDim2.new(1, -(win.SideBarWidth or 200), 1, -top)
-            win.UIElements.MainBar.Position = UDim2.new(1, 0, 1, 0)
+            if state then
+                if state.bar then state.bar:Destroy() end
+                if state.sizeChanged then
+                    mainBar.Size = state.originalMainSize
+                    mainBar.Position = state.originalMainPosition
+                    mainBar.AnchorPoint = state.originalMainAnchor
+                else
+                    local top = win.Topbar and win.Topbar.Height or 0
+                    mainBar.Size = UDim2.new(1, -(win.SideBarWidth or 200), 1, -top)
+                    mainBar.Position = UDim2.new(1, 0, 1, 0)
+                end
+                barStates[win] = nil
+            end
+            sideBar.Visible = true
             FX.RefreshBars = function()
                 for _, other in pairs(barStates) do
                     if other.refresh then other.refresh() end
@@ -15057,20 +15075,34 @@ do
         end
         if state and state.bar and state.bar.Parent then return end
 
-        local barH, pad = 66, 9
-        local top = win.Topbar.Height
-        win.UIElements.SideBarContainer.Visible = false
-        win.UIElements.MainBar.Size = UDim2.new(1, 0, 1, -top - barH - pad * 2)
-        win.UIElements.MainBar.Position = UDim2.new(1, 0, 1, -barH - pad * 2)
+        local barH, bottomPad, sidePad = 66, 12, 12
+        local top = win.Topbar and win.Topbar.Height or 0
+        state = {
+            window = win,
+            originalMainSize = mainBar.Size,
+            originalMainPosition = mainBar.Position,
+            originalMainAnchor = mainBar.AnchorPoint,
+            sizeChanged = true,
+            buttons = {},
+        }
+        barStates[win] = state
 
-        local bar = Box(win.UIElements.Main, 999, "Text", 0.91, {
+        -- Konten mengisi seluruh area sampai batas bawah. Kapsul hanya overlay,
+        -- sehingga tidak memotong tinggi MainBar dan tidak menyatu dengan panel.
+        sideBar.Visible = false
+        mainBar.AnchorPoint = Vector2.new(1, 1)
+        mainBar.Size = UDim2.new(1, 0, 1, -top)
+        mainBar.Position = UDim2.new(1, 0, 1, 0)
+
+        local bar = Box(main, 999, "Text", 0.91, {
             Name = "FXBottomBar",
-            Size = UDim2.new(1, -pad * 2, 0, barH),
+            Size = UDim2.new(1, -sidePad * 2, 0, barH),
             AnchorPoint = Vector2.new(0.5, 1),
-            Position = UDim2.new(0.5, 0, 1, -pad),
-            ZIndex = 30,
+            Position = UDim2.new(0.5, 0, 1, -bottomPad),
+            ZIndex = 100,
             ClipsDescendants = true,
         })
+        state.bar = bar
         New("UIStroke", {
             Color = Color3.new(1, 1, 1),
             Transparency = 0.78,
@@ -15090,7 +15122,7 @@ do
             ScrollingDirection = Enum.ScrollingDirection.X,
             ScrollingEnabled = true,
             Active = true,
-            ZIndex = 31,
+            ZIndex = 101,
             Parent = bar,
         })
         local layout = New("UIListLayout", {
@@ -15108,9 +15140,7 @@ do
             PaddingBottom = UDim.new(0, 5),
             Parent = scroll,
         })
-
-        state = {bar = bar, scroll = scroll, buttons = {}, window = win}
-        barStates[win] = state
+        state.scroll = scroll
 
         local function getTabs()
             local tabs = {}
@@ -15152,7 +15182,8 @@ do
 
             local tabs = getTabs()
             local count = #tabs
-            local available = math.max(72, math.floor((scroll.AbsoluteSize.X - 28) / math.max(math.min(count, 4), 1)))
+            local visibleSlots = math.max(math.min(count, 4), 1)
+            local available = math.max(72, math.floor((scroll.AbsoluteSize.X - 28) / visibleSlots))
             local tabWidth = math.clamp(available, 72, 104)
 
             for order, entry in ipairs(tabs) do
@@ -15164,24 +15195,24 @@ do
                     BackgroundTransparency = 1,
                     Size = UDim2.fromOffset(tabWidth, 54),
                     LayoutOrder = order,
-                    ZIndex = 32,
+                    ZIndex = 102,
                     Parent = scroll,
                 })
                 local pill = Box(btn, 999, "Text", 1, {
                     Size = UDim2.fromScale(1, 1),
-                    ZIndex = 32,
+                    ZIndex = 102,
                 })
                 local icon
                 if tab.Icon then
                     local ok, result = pcall(function()
                         return Creator.Image(tab.Icon, tostring(tab.Icon) .. ":" .. tostring(tab.Title or ""), 0, win.Folder, "BottomBar", true, tab.IconThemed)
                     end)
-                    if ok then
+                    if ok and result then
                         icon = result
                         icon.Size = UDim2.fromOffset(21, 21)
                         icon.AnchorPoint = Vector2.new(0.5, 0)
                         icon.Position = UDim2.new(0.5, 0, 0, 7)
-                        icon.ZIndex = 33
+                        icon.ZIndex = 103
                         icon.Parent = btn
                     end
                 end
@@ -15191,7 +15222,7 @@ do
                     AnchorPoint = Vector2.new(0.5, 1),
                     TextXAlignment = Enum.TextXAlignment.Center,
                     TextTruncate = Enum.TextTruncate.AtEnd,
-                    ZIndex = 33,
+                    ZIndex = 103,
                 })
                 if not icon then
                     label.Position = UDim2.fromScale(0.5, 0.5)
@@ -15199,11 +15230,8 @@ do
                     label.TextSize = 13
                     label.AnchorPoint = Vector2.new(0.5, 0.5)
                 end
-
                 Creator.AddSignal(btn.MouseButton1Click, function()
-                    if not tab.Locked then
-                        TabModule:SelectTab(idx)
-                    end
+                    if not tab.Locked then TabModule:SelectTab(idx) end
                 end)
                 state.buttons[idx] = {btn = btn, pill = pill, label = label, icon = icon}
             end
@@ -15329,6 +15357,8 @@ do
         win.SetReducedMotion = function(_, v) return FX.SetReducedMotion(v) end
         win.SetTopbarStyle = function(_, s) pcall(styleTopbar, win, s) end
         win.SetSidebarCollapsible = function(_, on, o)
+            local current = barStates and barStates[win]
+            if on and current and current.bar and current.bar.Parent then return end
             if on then sidebarCollapsible(win, o) else sidebarFixed(win) end
         end
         win.SetBottomBar = function(_, on) bottomBar(win, on and true or false) end
