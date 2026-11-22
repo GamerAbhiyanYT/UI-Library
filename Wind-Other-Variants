@@ -15042,8 +15042,8 @@ do
     end
 
     -- ------------------------------------------------------------------
-    -- C) TAB LAYOUT : "Sidebar" (bawaan WindUI) atau "BottomBar" (kapsul gaya iOS)
-    --    Tab di bottom bar otomatis bisa digeser kiri-kanan (sentuh, drag mouse).
+    -- C) TAB LAYOUT : "Sidebar" (bawaan WindUI) atau "BottomBar"/"Dock" (dock melayang di bawah layar)
+    --    Tab di dock otomatis bisa digeser kiri-kanan (sentuh, drag mouse).
     --    Sidebar selalu tampil penuh (ikon + judul, daftar lurus ke bawah).
     -- ------------------------------------------------------------------
     barStates = setmetatable({}, {__mode = "k"})
@@ -15060,128 +15060,249 @@ do
         end
     end
 
+    -- Dock bawah gaya app (floating pill):
+    --   [folder: Layout] | [gear: Quick settings][cmd: Quick jump] | tab (geser kiri-kanan) | [eye: tampil/sembunyi window] [x: tutup]
+    -- Dock menempel ke ScreenGui WindUI (bukan ke window), jadi tetap ada saat window disembunyikan.
     local function bottomBar(win, enable)
         if not win or not win.UIElements or not win.UIElements.Main then return end
-        local main = win.UIElements.Main
         local mainBar = win.UIElements.MainBar
         local sideBar = win.UIElements.SideBarContainer
         if not (mainBar and sideBar) then return end
 
-        local state = barStates[win]
+        local function teardown(st)
+            if not st then return end
+            st.alive = false
+            if st.listener then removeTabListener(st.listener) end
+            for _, c in ipairs(st.conns) do pcall(function() c:Disconnect() end) end
+            if st.popup then pcall(function() st.popup:Destroy() end) end
+            if st.backdrop then pcall(function() st.backdrop:Destroy() end) end
+            if st.bar then pcall(function() st.bar:Destroy() end) end
+            pcall(function()
+                mainBar.Size = st.originalMainSize
+                mainBar.Position = st.originalMainPosition
+                mainBar.AnchorPoint = st.originalMainAnchor
+            end)
+            if barStates[win] == st then barStates[win] = nil end
+        end
+
         if not enable then
-            if state then
-                if state.listener then removeTabListener(state.listener) end
-                for _, c in ipairs(state.conns or {}) do pcall(function() c:Disconnect() end) end
-                if state.bar then state.bar:Destroy() end
-                mainBar.Size = state.originalMainSize
-                mainBar.Position = state.originalMainPosition
-                mainBar.AnchorPoint = state.originalMainAnchor
-                barStates[win] = nil
-            end
+            teardown(barStates[win])
             sideBar.Visible = true
             return
         end
-        if state and state.bar and state.bar.Parent then return end
+        if barStates[win] and barStates[win].bar and barStates[win].bar.Parent then return end
 
-        local barH, bottomPad, sidePad = 66, 12, 12
+        local gui = aa.ScreenGui
+        if not gui then return end
+
+        local ACCENT = Color3.fromRGB(70, 156, 255)
+        local BASE = Color3.fromRGB(17, 19, 25)
+        local TXT = Color3.fromRGB(236, 239, 246)
+        local DIM = Color3.fromRGB(150, 156, 170)
+        local WHITE = Color3.new(1, 1, 1)
+        local DOCK_H, MARGIN = 56, 14
+        local W_MED, W_SEMI = Enum.FontWeight.Medium, Enum.FontWeight.SemiBold
+        local AX, AY = Enum.AutomaticSize.X, Enum.AutomaticSize.Y
+        local HORIZ, VERT = Enum.FillDirection.Horizontal, Enum.FillDirection.Vertical
         local top = win.Topbar and win.Topbar.Height or 0
-        state = {
+
+        local st = {
             window = win,
             originalMainSize = mainBar.Size,
             originalMainPosition = mainBar.Position,
             originalMainAnchor = mainBar.AnchorPoint,
             buttons = {},
             conns = {},
+            alive = true,
         }
-        barStates[win] = state
+        barStates[win] = st
 
-        -- Konten mengisi seluruh area sampai batas bawah. Kapsul hanya overlay,
-        -- sehingga tidak memotong tinggi MainBar dan tidak menyatu dengan panel.
+        -- Konten mengisi seluruh window (sidebar disembunyikan, dock ada di luar window)
         sideBar.Visible = false
         mainBar.AnchorPoint = Vector2.new(1, 1)
         mainBar.Size = UDim2.new(1, 0, 1, -top)
         mainBar.Position = UDim2.new(1, 0, 1, 0)
 
-        local bar = Box(main, 999, "Text", 0.91, {
-            Name = "FXBottomBar",
-            Size = UDim2.new(1, -sidePad * 2, 0, barH),
-            AnchorPoint = Vector2.new(0.5, 1),
-            Position = UDim2.new(0.5, 0, 1, -bottomPad),
-            ZIndex = 100,
-            ClipsDescendants = true,
-        })
-        state.bar = bar
-        New("UIStroke", {
-            Color = Color3.new(1, 1, 1),
-            Transparency = 0.78,
-            Thickness = 1,
-            Parent = bar,
-        })
-
-        -- Daftar tab: ScrollingFrame horizontal (built-in, bisa digeser kiri-kanan)
-        local scroll = New("ScrollingFrame", {
-            Name = "TabsScroll",
-            BackgroundTransparency = 1,
-            Size = UDim2.fromScale(1, 1),
-            Position = UDim2.fromScale(0, 0),
-            ScrollBarThickness = 0,
-            BorderSizePixel = 0,
-            AutomaticCanvasSize = Enum.AutomaticSize.X,
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-            ScrollingDirection = Enum.ScrollingDirection.X,
-            ElasticBehavior = Enum.ElasticBehavior.Always,
-            ScrollingEnabled = true,
-            Active = true,
-            ZIndex = 101,
-            Parent = bar,
-        })
-        New("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            HorizontalAlignment = Enum.HorizontalAlignment.Left,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 5),
-            Parent = scroll,
-        })
-        New("UIPadding", {
-            PaddingLeft = UDim.new(0, 7),
-            PaddingRight = UDim.new(0, 7),
-            PaddingTop = UDim.new(0, 5),
-            PaddingBottom = UDim.new(0, 5),
-            Parent = scroll,
-        })
-        state.scroll = scroll
-
-        -- Geser dengan mouse (PC). Sentuhan (HP) sudah ditangani ScrollingFrame.
-        local dragging, dragStartX, dragStartCanvas, dragMoved, lastDragEnd = false, 0, 0, false, 0
-        local function maxCanvas()
-            return math.max(0, scroll.AbsoluteCanvasSize.X - scroll.AbsoluteSize.X)
+        -- ---------------------------------------------------------------- builder kecil
+        local function make(class, props, children)
+            local inst = Instance.new(class)
+            local parent
+            for k, v in pairs(props or {}) do
+                if k == "Parent" then parent = v else inst[k] = v end
+            end
+            for _, child in ipairs(children or {}) do child.Parent = inst end
+            if parent then inst.Parent = parent end
+            return inst
         end
-        table.insert(state.conns, scroll.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging, dragMoved = true, false
-                dragStartX, dragStartCanvas = input.Position.X, scroll.CanvasPosition.X
-            end
-        end))
-        table.insert(state.conns, UIS.InputChanged:Connect(function(input)
-            if not dragging or input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-            local dx = input.Position.X - dragStartX
-            if not dragMoved and math.abs(dx) > 6 then dragMoved = true end
-            if dragMoved then
-                scroll.CanvasPosition = Vector2.new(math.clamp(dragStartCanvas - dx, 0, maxCanvas()), 0)
-            end
-        end))
-        table.insert(state.conns, UIS.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
-                dragging = false
-                if dragMoved then lastDragEnd = os.clock() end
-            end
-        end))
+        local function corner(r) return make("UICorner", {CornerRadius = r}) end
+        local function stroke(tr, color) return make("UIStroke", {Color = color or WHITE, Transparency = tr, Thickness = 1}) end
+        local function listH(pad) return make("UIListLayout", {FillDirection = HORIZ, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, pad or 0)}) end
+        local function listV(pad) return make("UIListLayout", {FillDirection = VERT, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, pad or 0)}) end
+        local function pad(l, t, r, b) return make("UIPadding", {PaddingLeft = UDim.new(0, l), PaddingTop = UDim.new(0, t), PaddingRight = UDim.new(0, r), PaddingBottom = UDim.new(0, b)}) end
+        local function connect(signal, fn) local c = signal:Connect(fn); table.insert(st.conns, c); return c end
 
-        local function getTabs()
+        local function tintIcon(holder, color, transp)
+            if not holder then return end
+            for _, d in ipairs(holder:GetDescendants()) do
+                if d:IsA "ImageLabel" or d:IsA "ImageButton" then
+                    d.ImageColor3 = color
+                    d.ImageTransparency = transp or 0
+                end
+            end
+        end
+        local function makeIcon(name, size, parent)
+            local ok, f = pcall(Creator.Image, name, tostring(name), 0, "Dock", "Dock", false, false)
+            if not ok or typeof(f) ~= "Instance" then return nil end
+            f.AnchorPoint = Vector2.new(0.5, 0.5)
+            f.Position = UDim2.fromScale(0.5, 0.5)
+            f.Size = UDim2.fromOffset(size, size)
+            f.Parent = parent
+            return f
+        end
+        local function sep(parent, order)
+            return make("Frame", {BackgroundColor3 = WHITE, BackgroundTransparency = 0.86, BorderSizePixel = 0, Size = UDim2.fromOffset(1, 24), LayoutOrder = order, Parent = parent})
+        end
+        local function iconButton(parent, iconName, w, h, order, onClick)
+            local btn = make("TextButton", {
+                Text = "", AutoButtonColor = false, BackgroundColor3 = WHITE, BackgroundTransparency = 1,
+                BorderSizePixel = 0, Size = UDim2.fromOffset(w, h), LayoutOrder = order, Parent = parent,
+            }, {corner(UDim.new(1, 0))})
+            local ic = makeIcon(iconName, 18, btn)
+            tintIcon(ic, DIM, 0)
+            connect(btn.MouseEnter, function() tw(btn, 0.12, {BackgroundTransparency = 0.9}) end)
+            connect(btn.MouseLeave, function() tw(btn, 0.12, {BackgroundTransparency = 1}) end)
+            connect(btn.Activated, onClick)
+            return btn, ic
+        end
+        local function label(parent, text, size, color, order, weight)
+            return make("TextLabel", {
+                BackgroundTransparency = 1, Text = text, TextSize = size, TextColor3 = color,
+                FontFace = Font.new(Creator.Font, weight or W_MED), TextXAlignment = Enum.TextXAlignment.Left,
+                Size = UDim2.new(1, 0, 0, size + 6), LayoutOrder = order or 0, Parent = parent,
+            })
+        end
+
+        -- ---------------------------------------------------------------- dock
+        local bar = make("Frame", {
+            Name = "FXDock", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -MARGIN),
+            Size = UDim2.new(0.62, 0, 0, DOCK_H), BackgroundColor3 = BASE, BackgroundTransparency = 0.06,
+            BorderSizePixel = 0, Active = true, ZIndex = 100, Parent = gui,
+        }, {
+            corner(UDim.new(1, 0)), stroke(0.88),
+            make("UISizeConstraint", {MinSize = Vector2.new(280, DOCK_H), MaxSize = Vector2.new(820, DOCK_H)}),
+            pad(8, 7, 8, 7),
+        })
+        st.bar = bar
+
+        local left = make("Frame", {Name = "Left", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(0, 38), AutomaticSize = AX, Parent = bar}, {listH(6)})
+        local right = make("Frame", {Name = "Right", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.fromOffset(0, 38), AutomaticSize = AX, Parent = bar}, {listH(6)})
+        local tabsHolder = make("Frame", {Name = "Tabs", BackgroundTransparency = 1, ClipsDescendants = true, Parent = bar})
+        local scroll = make("ScrollingFrame", {
+            Name = "TabsScroll", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
+            ScrollBarThickness = 0, AutomaticCanvasSize = AX, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.X,
+            ElasticBehavior = Enum.ElasticBehavior.Always, Active = true, Parent = tabsHolder,
+        }, {listH(6), pad(2, 0, 2, 0)})
+        st.scroll = scroll
+
+        local function relayout()
+            if not bar.Parent then return end
+            local lw, rw = left.AbsoluteSize.X, right.AbsoluteSize.X
+            tabsHolder.Position = UDim2.fromOffset(lw + 8, 0)
+            tabsHolder.Size = UDim2.new(1, -(lw + rw + 16), 1, 0)
+        end
+        connect(left:GetPropertyChangedSignal "AbsoluteSize", relayout)
+        connect(right:GetPropertyChangedSignal "AbsoluteSize", relayout)
+        connect(bar:GetPropertyChangedSignal "AbsoluteSize", relayout)
+
+        -- ---------------------------------------------------------------- popup
+        local function closePopup()
+            if st.popup then pcall(function() st.popup:Destroy() end) st.popup = nil end
+            if st.backdrop then pcall(function() st.backdrop:Destroy() end) st.backdrop = nil end
+            st.popupKind = nil
+        end
+        local function openPopup(kind, title, build)
+            if st.popupKind == kind then closePopup() return end
+            closePopup()
+            st.popupKind = kind
+            st.backdrop = make("TextButton", {Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 105, Parent = gui})
+            st.backdrop.Activated:Connect(closePopup)
+            local pop = make("Frame", {
+                Name = "FXDockPopup", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -(DOCK_H + MARGIN + 10)),
+                Size = UDim2.new(0.8, 0, 0, 0), AutomaticSize = AY, BackgroundColor3 = BASE, BackgroundTransparency = 0.04,
+                BorderSizePixel = 0, Active = true, ZIndex = 110, Parent = gui,
+            }, {
+                corner(UDim.new(0, 18)), stroke(0.88),
+                make("UISizeConstraint", {MinSize = Vector2.new(240, 0), MaxSize = Vector2.new(340, 100000)}),
+                listV(8), pad(14, 14, 14, 14),
+            })
+            st.popup = pop
+            label(pop, title, 16, TXT, 0, W_SEMI)
+            build(pop)
+        end
+
+        local function segRow(parent, title, values, current, onPick, order)
+            local row = make("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, LayoutOrder = order, Parent = parent}, {listV(6)})
+            label(row, title, 13, DIM, 1)
+            local seg = make("Frame", {BackgroundColor3 = WHITE, BackgroundTransparency = 0.93, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 2, Parent = row}, {corner(UDim.new(0, 10)), listH(3), pad(3, 3, 3, 3)})
+            local items = {}
+            local function paint(value)
+                for v, it in pairs(items) do
+                    local on = v == value
+                    it.btn.BackgroundTransparency = on and 0.72 or 1
+                    it.txt.TextColor3 = on and TXT or DIM
+                end
+            end
+            for i, v in ipairs(values) do
+                local btn = make("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = ACCENT, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1 / #values, -3, 1, 0), LayoutOrder = i, Parent = seg}, {corner(UDim.new(0, 8))})
+                local txt = make("TextLabel", {BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = v, TextSize = 13, TextColor3 = DIM, FontFace = Font.new(Creator.Font, W_MED), Parent = btn})
+                items[v] = {btn = btn, txt = txt}
+                btn.Activated:Connect(function()
+                    paint(v)
+                    onPick(v)
+                end)
+            end
+            paint(current)
+        end
+
+        local function toggleRow(parent, title, value, onChange, order)
+            local row = make("TextButton", {Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = order, Parent = parent})
+            local lab = label(row, title, 14, TXT, 0)
+            lab.Size = UDim2.new(1, -56, 1, 0)
+            lab.TextYAlignment = Enum.TextYAlignment.Center
+            local track = make("Frame", {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.fromOffset(44, 24), BackgroundColor3 = ACCENT, BackgroundTransparency = 0.8, BorderSizePixel = 0, Parent = row}, {corner(UDim.new(1, 0))})
+            local knob = make("Frame", {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 3, 0.5, 0), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = track}, {corner(UDim.new(1, 0))})
+            local function paint(v, instant)
+                local props1 = {BackgroundTransparency = v and 0 or 0.8}
+                local props2 = {Position = v and UDim2.new(0, 23, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)}
+                if instant then
+                    track.BackgroundTransparency = props1.BackgroundTransparency
+                    knob.Position = props2.Position
+                else
+                    tw(track, 0.15, props1)
+                    tw(knob, 0.15, props2)
+                end
+            end
+            local cur = value and true or false
+            paint(cur, true)
+            row.Activated:Connect(function()
+                cur = not cur
+                paint(cur)
+                onChange(cur)
+            end)
+        end
+
+        -- ---------------------------------------------------------------- aksi
+        local function goTab(idx)
+            local tab = TabModule.Tabs and TabModule.Tabs[idx]
+            if not tab or tab.Locked then return end
+            TabModule:SelectTab(idx)
+            if win.Closed then win:Open() end
+        end
+
+        local function listTabs()
             local tabs = {}
             for idx, tab in pairs(TabModule.Tabs or {}) do
-                if type(idx) == "number" and type(tab) == "table" then
+                if type(idx) == "number" and type(tab) == "table" and tab.Title then
                     table.insert(tabs, {Index = idx, Data = tab})
                 end
             end
@@ -15189,21 +15310,143 @@ do
             return tabs
         end
 
+        local function openLayout()
+            openPopup("layout", "Layout", function(pop)
+                segRow(pop, "Tab layout", {"Sidebar", "Dock"}, "Dock", function(v)
+                    if v == "Sidebar" then
+                        closePopup()
+                        win:SetTabLayout("Sidebar")
+                    end
+                end, 1)
+                segRow(pop, "Topbar style", {"Default", "Mac"}, (win.Topbar and win.Topbar.ButtonsType == "Mac") and "Mac" or "Default", function(v)
+                    win:SetTopbarStyle(v)
+                end, 2)
+            end)
+        end
+
+        local function openSettings()
+            openPopup("settings", "Quick settings", function(pop)
+                segRow(pop, "Density", {"Compact", "Comfortable", "Touch"}, FX.Density, function(v) win:SetDensity(v) end, 1)
+                toggleRow(pop, "Reduced motion", FX.ReducedMotion, function(v) win:SetReducedMotion(v) end, 2)
+                toggleRow(pop, "Window transparency", win.Transparent, function(v) win:ToggleTransparency(v) end, 3)
+                toggleRow(pop, "Swipe between tabs", FX.Swipe, function(v) win:SetSwipeTabs(v) end, 4)
+            end)
+        end
+
+        local function openJump()
+            openPopup("jump", "Quick jump", function(pop)
+                local box = make("TextBox", {
+                    Text = "", PlaceholderText = "Search tabs...", PlaceholderColor3 = DIM, TextColor3 = TXT, TextSize = 14,
+                    FontFace = Font.new(Creator.Font, W_MED), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false,
+                    BackgroundColor3 = WHITE, BackgroundTransparency = 0.93, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 1, Parent = pop,
+                }, {corner(UDim.new(0, 10)), pad(12, 0, 12, 0)})
+                local list = make("ScrollingFrame", {
+                    BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY,
+                    AutomaticCanvasSize = AY, CanvasSize = UDim2.new(), ScrollBarThickness = 3, LayoutOrder = 2, Parent = pop,
+                }, {listV(4), make("UISizeConstraint", {MaxSize = Vector2.new(10000, 220)})})
+                local function fill(filter)
+                    for _, c in ipairs(list:GetChildren()) do
+                        if c:IsA "TextButton" then c:Destroy() end
+                    end
+                    filter = string.lower(filter or "")
+                    for order, entry in ipairs(listTabs()) do
+                        local title = tostring(entry.Data.Title)
+                        if filter == "" or string.find(string.lower(title), filter, 1, true) then
+                            local row = make("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = WHITE, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = order, Parent = list}, {corner(UDim.new(0, 10)), listH(10), pad(10, 0, 10, 0)})
+                            local holder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), LayoutOrder = 1, Parent = row})
+                            if entry.Data.Icon then tintIcon(makeIcon(entry.Data.Icon, 18, holder), DIM, 0) end
+                            make("TextLabel", {BackgroundTransparency = 1, Text = title, TextSize = 14, TextColor3 = TXT, FontFace = Font.new(Creator.Font, W_MED), TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -30, 1, 0), LayoutOrder = 2, Parent = row})
+                            row.MouseEnter:Connect(function() row.BackgroundTransparency = 0.92 end)
+                            row.MouseLeave:Connect(function() row.BackgroundTransparency = 1 end)
+                            row.Activated:Connect(function()
+                                closePopup()
+                                goTab(entry.Index)
+                            end)
+                        end
+                    end
+                end
+                fill("")
+                box:GetPropertyChangedSignal("Text"):Connect(function() fill(box.Text) end)
+            end)
+        end
+
+        local function closeWindow()
+            closePopup()
+            for _, b in pairs(win.TopBarButtons or {}) do
+                if b.Name == "Close" and b.Callback then
+                    pcall(b.Callback)
+                    return
+                end
+            end
+            pcall(function() win:Destroy() end)
+        end
+
+        -- ---------------------------------------------------------------- isi dock (kiri)
+        iconButton(left, "folder", 38, 38, 1, openLayout)
+        sep(left, 2)
+        local pill = make("Frame", {BackgroundColor3 = WHITE, BackgroundTransparency = 0.93, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 38), AutomaticSize = AX, LayoutOrder = 3, Parent = left}, {corner(UDim.new(1, 0)), stroke(0.9), listH(2), pad(3, 0, 3, 0)})
+        iconButton(pill, "settings", 36, 32, 1, openSettings)
+        iconButton(pill, "command", 36, 32, 2, openJump)
+        sep(left, 4)
+
+        -- kanan: eye + close
+        sep(right, 1)
+        local eyeBtn = make("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = ACCENT, BackgroundTransparency = 0.75, BorderSizePixel = 0, Size = UDim2.fromOffset(38, 38), LayoutOrder = 2, Parent = right}, {corner(UDim.new(1, 0))})
+        local eyeOn = makeIcon("eye", 18, eyeBtn)
+        local eyeOff = makeIcon("eye-off", 18, eyeBtn)
+        connect(eyeBtn.Activated, function() win:Toggle() end)
+        local function refreshEye()
+            local hidden = win.Closed == true
+            eyeBtn.BackgroundTransparency = hidden and 0.75 or 1
+            if eyeOn then eyeOn.Visible = hidden tintIcon(eyeOn, ACCENT, 0) end
+            if eyeOff then eyeOff.Visible = not hidden tintIcon(eyeOff, DIM, 0) end
+        end
+        iconButton(right, "x", 32, 32, 3, closeWindow)
+
+        -- ---------------------------------------------------------------- tab (geser kiri-kanan)
+        local dragging, dragStartX, dragStartCanvas, dragMoved, lastDragEnd = false, 0, 0, false, 0
+        local function maxCanvas() return math.max(0, scroll.AbsoluteCanvasSize.X - scroll.AbsoluteSize.X) end
+        connect(scroll.InputBegan, function(input)
+            if input.UserInputType == MB1 then
+                dragging, dragMoved = true, false
+                dragStartX, dragStartCanvas = input.Position.X, scroll.CanvasPosition.X
+            end
+        end)
+        connect(UIS.InputChanged, function(input)
+            if not dragging or input.UserInputType ~= MMOVE then return end
+            local dx = input.Position.X - dragStartX
+            if not dragMoved and math.abs(dx) > 6 then dragMoved = true end
+            if dragMoved then
+                scroll.CanvasPosition = Vector2.new(math.clamp(dragStartCanvas - dx, 0, maxCanvas()), 0)
+            end
+        end)
+        connect(UIS.InputEnded, function(input)
+            if input.UserInputType == MB1 and dragging then
+                dragging = false
+                if dragMoved then lastDragEnd = os.clock() end
+            end
+        end)
+
         local function sync(idx)
             idx = idx or TabModule.SelectedTab
-            for tabIndex, item in pairs(state.buttons) do
-                local active = tabIndex == idx
-                item.pill.BackgroundTransparency = active and 0.79 or 1
-                item.label.TextTransparency = active and 0 or 0.38
-                if item.icon then item.icon.ImageTransparency = active and 0 or 0.35 end
-                if active and item.btn.Parent then
-                    local x = item.btn.AbsolutePosition.X - scroll.AbsolutePosition.X
-                    local w = item.btn.AbsoluteSize.X
-                    local viewW = scroll.AbsoluteSize.X
-                    if x < 0 then
-                        scroll.CanvasPosition = Vector2.new(math.max(0, scroll.CanvasPosition.X + x - 8), 0)
-                    elseif x + w > viewW then
-                        scroll.CanvasPosition = Vector2.new(scroll.CanvasPosition.X + x + w - viewW + 8, 0)
+            for tabIndex, item in pairs(st.buttons) do
+                if item.btn.Parent then
+                    local active = tabIndex == idx
+                    tw(item.btn, 0.18, {BackgroundTransparency = active and 0.8 or 1})
+                    tw(item.stroke, 0.18, {Transparency = active and 0.55 or 1})
+                    item.label.TextColor3 = active and TXT or DIM
+                    tintIcon(item.icon, active and ACCENT or DIM, 0)
+                    if active then
+                        task.defer(function()
+                            if not item.btn.Parent then return end
+                            local x = item.btn.AbsolutePosition.X - scroll.AbsolutePosition.X
+                            local w, viewW = item.btn.AbsoluteSize.X, scroll.AbsoluteSize.X
+                            if x < 0 then
+                                scroll.CanvasPosition = Vector2.new(math.max(0, scroll.CanvasPosition.X + x - 8), 0)
+                            elseif x + w > viewW then
+                                scroll.CanvasPosition = Vector2.new(scroll.CanvasPosition.X + x + w - viewW + 8, 0)
+                            end
+                        end)
                     end
                 end
             end
@@ -15211,81 +15454,72 @@ do
 
         local function refresh()
             if not bar.Parent then return end
-            for _, item in pairs(state.buttons) do
+            for _, item in pairs(st.buttons) do
                 if item.btn then item.btn:Destroy() end
             end
-            state.buttons = {}
-
-            local tabs = getTabs()
-            local count = #tabs
-            local visibleSlots = math.max(math.min(count, 4), 1)
-            local available = math.max(72, math.floor((scroll.AbsoluteSize.X - 28) / visibleSlots))
-            local tabWidth = math.clamp(available, 72, 104)
-
-            for order, entry in ipairs(tabs) do
+            st.buttons = {}
+            for order, entry in ipairs(listTabs()) do
                 local idx, tab = entry.Index, entry.Data
-                local btn = New("TextButton", {
-                    Name = "Tab_" .. tostring(idx),
-                    Text = "",
-                    AutoButtonColor = false,
-                    BackgroundTransparency = 1,
-                    Size = UDim2.fromOffset(tabWidth, 54),
-                    LayoutOrder = order,
-                    ZIndex = 102,
-                    Parent = scroll,
-                })
-                local pill = Box(btn, 999, "Text", 1, {
-                    Size = UDim2.fromScale(1, 1),
-                    ZIndex = 102,
-                })
+                local btn = make("TextButton", {
+                    Name = "Tab_" .. tostring(idx), Text = "", AutoButtonColor = false, BackgroundColor3 = ACCENT,
+                    BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 38), AutomaticSize = AX,
+                    LayoutOrder = order, Parent = scroll,
+                }, {corner(UDim.new(1, 0)), listH(7), pad(14, 0, 14, 0)})
+                local tabStroke = stroke(1, ACCENT)
+                tabStroke.Parent = btn
                 local icon
                 if tab.Icon then
-                    local ok, result = pcall(function()
-                        return Creator.Image(tab.Icon, tostring(tab.Icon) .. ":" .. tostring(tab.Title or ""), 0, win.Folder, "BottomBar", true, tab.IconThemed)
-                    end)
-                    if ok and result then
-                        icon = result
-                        icon.Size = UDim2.fromOffset(21, 21)
-                        icon.AnchorPoint = Vector2.new(0.5, 0)
-                        icon.Position = UDim2.new(0.5, 0, 0, 7)
-                        icon.ZIndex = 103
-                        icon.Parent = btn
-                    end
+                    local holder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), LayoutOrder = 1, Parent = btn})
+                    icon = makeIcon(tab.Icon, 18, holder)
+                    if not icon then holder:Destroy() end
                 end
-                local label = Txt(btn, tostring(tab.Title or ("Tab " .. tostring(idx))), 11, {
-                    Size = UDim2.new(1, -6, 0, 15),
-                    Position = UDim2.new(0.5, 0, 1, -5),
-                    AnchorPoint = Vector2.new(0.5, 1),
-                    TextXAlignment = Enum.TextXAlignment.Center,
-                    TextTruncate = Enum.TextTruncate.AtEnd,
-                    ZIndex = 103,
+                local lab = make("TextLabel", {
+                    BackgroundTransparency = 1, Text = tostring(tab.Title), TextSize = 14, TextColor3 = DIM,
+                    FontFace = Font.new(Creator.Font, W_MED), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, LayoutOrder = 2, Parent = btn,
                 })
-                if not icon then
-                    label.Position = UDim2.fromScale(0.5, 0.5)
-                    label.Size = UDim2.new(1, -6, 1, 0)
-                    label.TextSize = 13
-                    label.AnchorPoint = Vector2.new(0.5, 0.5)
-                end
-                Creator.AddSignal(btn.MouseButton1Click, function()
-                    -- abaikan "klik" yang sebenarnya akhir dari gerakan menggeser
-                    if os.clock() - lastDragEnd < 0.2 then return end
-                    if not tab.Locked then TabModule:SelectTab(idx) end
+                btn.Activated:Connect(function()
+                    if os.clock() - lastDragEnd < 0.2 then return end -- akhir gerakan geser, bukan klik
+                    goTab(idx)
                 end)
-                state.buttons[idx] = {btn = btn, pill = pill, label = label, icon = icon}
+                st.buttons[idx] = {btn = btn, stroke = tabStroke, label = lab, icon = icon}
             end
             sync()
         end
 
-        state.refresh = refresh
-        state.listener = function(idx)
-            if bar.Parent then sync(idx) else removeTabListener(state.listener) end
+        st.refresh = refresh
+        st.listener = function(idx)
+            if bar.Parent then sync(idx) else removeTabListener(st.listener) end
         end
-        table.insert(FX.TabListeners, state.listener)
+        table.insert(FX.TabListeners, st.listener)
+
+        task.defer(relayout)
         refresh()
+        refreshEye()
+
+        -- Naikkan window bila bagian bawahnya tertutup dock
+        task.delay(1, function()
+            pcall(function()
+                local m = win.UIElements.Main
+                if not st.alive or win.Closed or not m.Visible then return end
+                local limit = gui.AbsoluteSize.Y - (DOCK_H + MARGIN + 10)
+                local bottom = m.AbsolutePosition.Y + m.AbsoluteSize.Y
+                if bottom > limit then
+                    local shift = math.min(bottom - limit, math.max(0, m.AbsolutePosition.Y - 8))
+                    m.Position = m.Position - UDim2.fromOffset(0, shift)
+                end
+            end)
+        end)
+        task.spawn(function()
+            while st.alive and bar.Parent do
+                refreshEye()
+                task.wait(0.25)
+            end
+            if barStates[win] == st then pcall(teardown, st) end
+        end)
     end
 
     local function setTabLayout(win, mode)
-        if mode == "BottomBar" then
+        if mode == "BottomBar" or mode == "Dock" then
             bottomBar(win, true)
         else
             bottomBar(win, false)
@@ -15376,8 +15610,8 @@ do
     -- G) CreateWindow wrapper : opsi baru + method Window
     --    Density, ReducedMotion,
     --    Topbar.ButtonsType = "Mac" | "Default" (atau "Glass"|"Windows"|"Minimal"),
-    --    TabLayout = "Sidebar" | "BottomBar" | "Auto"   (BottomBar = true tetap didukung)
-    --    Method: Window:SetTabLayout(mode), Window:SetTopbarStyle(style)
+    --    TabLayout = "Sidebar" | "Dock" | "Auto"   ("BottomBar" dan BottomBar = true tetap didukung)
+    --    Method: Window:SetTabLayout("Sidebar" | "Dock"), Window:SetTopbarStyle("Mac" | "Default")
     -- ------------------------------------------------------------------
     local origCreate = aa.CreateWindow
     function aa.CreateWindow(self, cfg)
@@ -15418,7 +15652,7 @@ do
         win.SetTabLayout = function(_, mode) setTabLayout(win, mode) end
         win.GetTabLayout = function()
             local st = barStates[win]
-            return (st and st.bar and st.bar.Parent) and "BottomBar" or "Sidebar"
+            return (st and st.bar and st.bar.Parent) and "Dock" or "Sidebar"
         end
         win.SetBottomBar = function(_, on) setTabLayout(win, on and "BottomBar" or "Sidebar") end
         -- Sidebar collapsible sudah dihapus. Dibiarkan sebagai no-op agar script lama tidak error.
@@ -15449,7 +15683,7 @@ do
             if layout == true then layout = "BottomBar" end
         end
         if layout == "Auto" then layout = FX.Mobile and "BottomBar" or "Sidebar" end
-        if layout == "BottomBar" then
+        if layout == "BottomBar" or layout == "Dock" then
             task.defer(function() pcall(setTabLayout, win, "BottomBar") end)
         end
         if cfg.Theme == "Aurora" then task.defer(startAurora, win) end
