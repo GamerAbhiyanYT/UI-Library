@@ -219,7 +219,23 @@ type ConfigType__DARKLUA_TYPE_a = {
         end
         return d end function a.b()
         local b = (cloneref or clonereference or function(b) return b end)
-        local d = b(game:GetService "ReplicatedStorage":WaitForChild("GetIcons", 99999):InvokeServer())
+        local d
+        do
+            local RS = b(game:GetService "ReplicatedStorage")
+            local remote = RS:FindFirstChild "GetIcons" or RS:WaitForChild("GetIcons", 3)
+            if remote then
+                local ok, res = pcall(function() return remote:InvokeServer() end)
+                if ok and type(res) == "table" then d = res end
+            end
+            if not d and game.HttpGet then
+                local ok, res = pcall(function()
+                    return loadstring(game:HttpGet "https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua")()
+                end)
+                if ok and type(res) == "table" then d = res end
+            end
+            d = d or {}
+            d.Icons = d.Icons or {}
+        end
         local function parseIconString(e)
             if type(e) == "string" then
                 local f = e:find ":"
@@ -385,7 +401,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 if not l and j[2].Parts then
                     for p, r in next, j[2].Parts do
                         local u = d.Icon(r, g.Type)
-                        local v = Instance.New "ImageLabel"
+                        local v = Instance.new "ImageLabel"
                         v.Size = UDim2.new(1, 0, 1, 0)
                         v.BackgroundTransparency = 1
                         v.ImageColor3 = h[1 + p].Color
@@ -921,6 +937,9 @@ type ConfigType__DARKLUA_TYPE_a = {
         function r.Icon(u, v)
             return m.Icon2(u, nil, v ~= false)
         end
+        function r.IconSafe(u, v)
+            return r.Icon(u, v) or {"", {ImageRectSize = Vector2.new(0, 0), ImageRectPosition = Vector2.new(0, 0)}}
+        end
         function r.AddIcons(u, v)
             return m.AddIcons(u, v)
         end
@@ -1366,9 +1385,9 @@ type ConfigType__DARKLUA_TYPE_a = {
             local l
             if h.CanClose then
                 l = d("ImageButton", {
-                        Image = b.Icon "x" [1],
-                        ImageRectSize = b.Icon "x" [2].ImageRectSize,
-                        ImageRectOffset = b.Icon "x" [2].ImageRectPosition,
+                        Image = b.IconSafe "x" [1],
+                        ImageRectSize = b.IconSafe "x" [2].ImageRectSize,
+                        ImageRectOffset = b.IconSafe "x" [2].ImageRectPosition,
                         BackgroundTransparency = 1,
                         Size = UDim2.new(0, 16, 0, 16),
                         Position = UDim2.new(1, - f.UIPadding, 0, f.UIPadding),
@@ -1770,7 +1789,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 return aa(game:GetService "Players").LocalPlayer.UserId
             end
             local af, ag = request or http_request or syn_request, setclipboard or toclipboard
-            function ValidateKey(ah)
+            local function ValidateKey(ah)
                 local ai = "https://api.pandauth.com/api/v1/keys/validate"
                 local aj = {
                     ServiceID = ad,
@@ -1820,7 +1839,7 @@ type ConfigType__DARKLUA_TYPE_a = {
             function GetKeyLink()
                 return "https://new.pandadevelopment.net/getkey/" .. tostring(ad) .. "?hwid=" .. tostring(ae())
             end
-            function CopyLink()
+            local function CopyLink()
                 return ag(GetKeyLink())
             end
             return {
@@ -1835,7 +1854,7 @@ type ConfigType__DARKLUA_TYPE_a = {
             local ae = loadstring(game.HttpGet and game:HttpGet(ad) or HttpService:GetAsync(ad))()
             local af = setclipboard or toclipboard
             ae.script_id = ab
-            function ValidateKey(ag)
+            local function ValidateKey(ag)
                 local ah = ae.check_key(ag)
                 if ah.code == "KEY_VALID" then
                     return true, "Whitelisted!"
@@ -1847,7 +1866,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     return false, "Key check failed:" .. ah.message .. " Code: " .. ah.code
                 end
             end
-            function CopyLink()
+            local function CopyLink()
                 af(tostring(ac))
             end
             return {
@@ -4159,9 +4178,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                     Name = "Drag",
                 }, {
                     ac("ImageLabel", {
-                            Image = ab.Icon "move" [1],
-                            ImageRectOffset = ab.Icon "move" [2].ImageRectPosition,
-                            ImageRectSize = ab.Icon "move" [2].ImageRectSize,
+                            Image = ab.IconSafe "move" [1],
+                            ImageRectOffset = ab.IconSafe "move" [2].ImageRectPosition,
+                            ImageRectSize = ab.IconSafe "move" [2].ImageRectSize,
                             Size = UDim2.new(0, 18, 0, 18),
                             BackgroundTransparency = 1,
                             Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -4343,9 +4362,6 @@ type ConfigType__DARKLUA_TYPE_a = {
                     ag:SetIcon(ar.Icon)
                 end
                 an.UIStroke.UIGradient.Color = ar.Color
-                if Glow then
-                    Glow.UIGradient.Color = ar.Color
-                end
                 an.UICorner.CornerRadius = ar.CornerRadius
                 an.TextButton.UICorner.CornerRadius = UDim.new(ar.CornerRadius.Scale, ar.CornerRadius.Offset - 4)
                 an.UIStroke.Thickness = ar.StrokeThickness
@@ -6768,7 +6784,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                     UDim2.fromOffset(ap.UIElements.MenuCanvas.AbsoluteSize.X, aw)
                 end
             end
-            function UpdatePosition()
+            local function UpdatePosition()
                 local at = ap.UIElements.Dropdown or ap.DropdownFrame.UIElements.Main
                 local au = ap.UIElements.MenuCanvas
                 local av = ah.ViewportSize.Y
@@ -7327,9 +7343,9 @@ type ConfigType__DARKLUA_TYPE_a = {
             ap.Open = ap.DropdownMenu.Open
             ap.Close = ap.DropdownMenu.Close
             ag("ImageLabel", {
-                    Image = af.Icon "chevrons-up-down" [1],
-                    ImageRectOffset = af.Icon "chevrons-up-down" [2].ImageRectPosition,
-                    ImageRectSize = af.Icon "chevrons-up-down" [2].ImageRectSize,
+                    Image = af.IconSafe "chevrons-up-down" [1],
+                    ImageRectOffset = af.IconSafe "chevrons-up-down" [2].ImageRectPosition,
+                    ImageRectSize = af.IconSafe "chevrons-up-down" [2].ImageRectSize,
                     Size = UDim2.new(0, 18, 0, 18),
                     Position = UDim2.new(1, ap.UIElements.Dropdown and - 12 or 0, 0.5, 0),
                     ThemeTag = {
@@ -7639,9 +7655,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                                     Scale = 1,
                                 }),
                             ag("ImageLabel", {
-                                    Image = af.Icon "copy" [1],
-                                    ImageRectSize = af.Icon "copy" [2].ImageRectSize,
-                                    ImageRectOffset = af.Icon "copy" [2].ImageRectPosition,
+                                    Image = af.IconSafe "copy" [1],
+                                    ImageRectSize = af.IconSafe "copy" [2].ImageRectSize,
+                                    ImageRectOffset = af.IconSafe "copy" [2].ImageRectPosition,
                                     BackgroundTransparency = 1,
                                     AnchorPoint = Vector2.new(0.5, 0.5),
                                     Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -8622,9 +8638,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                     af("ImageLabel", {
                             Size = UDim2.new(1, 0, 1, 0),
                             BackgroundTransparency = 1,
-                            Image = aa.Icon "chevron-down" [1],
-                            ImageRectSize = aa.Icon "chevron-down" [2].ImageRectSize,
-                            ImageRectOffset = aa.Icon "chevron-down" [2].ImageRectPosition,
+                            Image = aa.IconSafe "chevron-down" [1],
+                            ImageRectSize = aa.IconSafe "chevron-down" [2].ImageRectSize,
+                            ImageRectOffset = aa.IconSafe "chevron-down" [2].ImageRectPosition,
                             ThemeTag = {
                                 ImageTransparency = "SectionExpandIconTransparency",
                                 ImageColor3 = "SectionExpandIcon",
@@ -9473,6 +9489,7 @@ type ConfigType__DARKLUA_TYPE_a = {
             TabHighlight = nil,
             OnChangeFunc = function(ao) end,
         }
+        local Window, WindUI
         function ao.Init(ap, aq, ar, as)
             Window = ap
             WindUI = aq
@@ -10018,9 +10035,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                     ai("ImageLabel", {
                             Size = UDim2.new(1, 0, 1, 0),
                             BackgroundTransparency = 1,
-                            Image = af.Icon "chevron-down" [1],
-                            ImageRectSize = af.Icon "chevron-down" [2].ImageRectSize,
-                            ImageRectOffset = af.Icon "chevron-down" [2].ImageRectPosition,
+                            Image = af.IconSafe "chevron-down" [1],
+                            ImageRectSize = af.IconSafe "chevron-down" [2].ImageRectSize,
+                            ImageRectOffset = af.IconSafe "chevron-down" [2].ImageRectPosition,
                             ThemeTag = {
                                 ImageColor3 = "Icon",
                             },
@@ -10182,9 +10199,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                     TextSize = 18,
                 })
             local ar = ak("ImageLabel", {
-                    Image = ai.Icon "x" [1],
-                    ImageRectSize = ai.Icon "x" [2].ImageRectSize,
-                    ImageRectOffset = ai.Icon "x" [2].ImageRectPosition,
+                    Image = ai.IconSafe "x" [1],
+                    ImageRectSize = ai.IconSafe "x" [2].ImageRectSize,
+                    ImageRectOffset = ai.IconSafe "x" [2].ImageRectPosition,
                     BackgroundTransparency = 1,
                     ThemeTag = {
                         ImageColor3 = "Icon",
@@ -10249,9 +10266,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                                             BackgroundTransparency = 1,
                                         }, {
                                             ak("ImageLabel", {
-                                                    Image = ai.Icon "search" [1],
-                                                    ImageRectSize = ai.Icon "search" [2].ImageRectSize,
-                                                    ImageRectOffset = ai.Icon "search" [2].ImageRectPosition,
+                                                    Image = ai.IconSafe "search" [1],
+                                                    ImageRectSize = ai.IconSafe "search" [2].ImageRectSize,
+                                                    ImageRectOffset = ai.IconSafe "search" [2].ImageRectPosition,
                                                     BackgroundTransparency = 1,
                                                     ThemeTag = {
                                                         ImageColor3 = "Icon",
@@ -10742,9 +10759,9 @@ type ConfigType__DARKLUA_TYPE_a = {
                 }, {
                     ao("ImageLabel", {
                             Size = UDim2.new(0, 70, 0, 70),
-                            Image = an.Icon "expand" [1],
-                            ImageRectOffset = an.Icon "expand" [2].ImageRectPosition,
-                            ImageRectSize = an.Icon "expand" [2].ImageRectSize,
+                            Image = an.IconSafe "expand" [1],
+                            ImageRectOffset = an.IconSafe "expand" [2].ImageRectPosition,
+                            ImageRectSize = an.IconSafe "expand" [2].ImageRectSize,
                             BackgroundTransparency = 1,
                             Position = UDim2.new(0.5, 0, 0.5, 0),
                             AnchorPoint = Vector2.new(0.5, 0.5),
@@ -11176,7 +11193,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                             Name = "Frame",
                         }),
                 })
-            function createAuthor(u)
+            local function createAuthor(u)
                 return ao("TextLabel", {
                         Text = u,
                         FontFace = Font.new(an.Font, Enum.FontWeight.Medium),
@@ -12238,6 +12255,7 @@ type ConfigType__DARKLUA_TYPE_a = {
                 return at:New(M, aw.UIElements.Main.Main.Topbar.Center.Holder)
             end
             local L = av.WindUI.GenerateGUID()
+            local isResizing, initialSize, initialInputPosition
             local function startResizing(M)
                 if aw.CanResize then
                     isResizing = true
@@ -12313,7 +12331,7 @@ type ConfigType__DARKLUA_TYPE_a = {
             local N = 0.4
             local O
             local P = 0
-            function onDoubleClick()
+            local function onDoubleClick()
                 aw:SetToTheCenter()
             end
             an.AddSignal(r.Frame.MouseButton1Up, function()
@@ -15043,8 +15061,13 @@ do
 
     -- ------------------------------------------------------------------
     -- C) TAB LAYOUT : "Sidebar" (bawaan WindUI) atau "BottomBar"/"Dock" (dock melayang di bawah layar)
-    --    Tab di dock otomatis bisa digeser kiri-kanan (sentuh, drag mouse).
-    --    Sidebar selalu tampil penuh (ikon + judul, daftar lurus ke bawah).
+    --    Dock:  [profil] | [folder: layout] | [settings][quick jump] | TAB + SECTION (geser) | grip | [eye][x]
+    --    - Section (Window:Section) tampil sebagai grup yang bisa dilipat di dock dan di Quick Jump
+    --    - Quick Jump bisa di-scroll atas-bawah dan tersusun per Section
+    --    - Dock bisa diperpendek/dipanjangkan dengan menggeser grip di ujung kanan area tab
+    --    - Open Button disembunyikan selama Dock aktif (muncul lagi saat kembali ke Sidebar)
+    --    - Tombol profil bawaan (kiri-bawah window) dipindah ke dock sebagai avatar + kartu profil
+    --    - Window otomatis dijauhkan dari dock agar elemen paling bawah tidak tertutup
     -- ------------------------------------------------------------------
     barStates = setmetatable({}, {__mode = "k"})
 
@@ -15060,14 +15083,42 @@ do
         end
     end
 
-    -- Dock bawah gaya app (floating pill):
-    --   [folder: Layout] | [gear: Quick settings][cmd: Quick jump] | tab (geser kiri-kanan) | [eye: tampil/sembunyi window] [x: tutup]
-    -- Dock menempel ke ScreenGui WindUI (bukan ke window), jadi tetap ada saat window disembunyikan.
+    -- urutan Tab / Section / Divider / Space sesuai pembuatan (dipakai dock & quick jump)
+    local function itemsOf(win)
+        win.__FXItems = win.__FXItems or {}
+        return win.__FXItems
+    end
+
+    -- tombol profil bawaan WindUI (avatar + nama di kiri-bawah window)
+    local function findProfileButton(win)
+        local ok, m = pcall(function() return win.UIElements.Main:FindFirstChild "Main" end)
+        if not ok or not m then return nil end
+        for _, c in ipairs(m:GetChildren()) do
+            if c:IsA "TextButton" and c:FindFirstChild "UserIcon" then return c end
+        end
+        return nil
+    end
+
     local function bottomBar(win, enable)
         if not win or not win.UIElements or not win.UIElements.Main then return end
         local mainBar = win.UIElements.MainBar
         local sideBar = win.UIElements.SideBarContainer
         if not (mainBar and sideBar) then return end
+
+        -- ---------------------------------------------------------------- Open Button
+        local function patchOpenButton()
+            local ob = win.OpenButtonMain
+            if ob and not ob.__FXPatched and type(ob.Visible) == "function" then
+                ob.__FXPatched = true
+                local orig = ob.Visible
+                ob.Visible = function(self, v)
+                    if win.__FXDockActive then v = false end -- Dock aktif: Open Button tidak boleh muncul
+                    return orig(self, v)
+                end
+                ob.__FXOrigVisible = orig
+            end
+            return ob
+        end
 
         local function teardown(st)
             if not st then return end
@@ -15081,6 +15132,18 @@ do
                 mainBar.Size = st.originalMainSize
                 mainBar.Position = st.originalMainPosition
                 mainBar.AnchorPoint = st.originalMainAnchor
+            end)
+            -- kembalikan profil bawaan + Open Button
+            win.__FXDockActive = false
+            pcall(function()
+                local pb = findProfileButton(win)
+                if pb and win.User then pb.Visible = win.User.Enabled and true or false end
+            end)
+            pcall(function()
+                local ob = win.OpenButtonMain
+                if ob and win.Closed and not win.Destroyed and not win.IsPC and win.IsOpenButtonEnabled ~= false then
+                    (ob.__FXOrigVisible or ob.Visible)(ob, true)
+                end
             end)
             if barStates[win] == st then barStates[win] = nil end
         end
@@ -15100,7 +15163,7 @@ do
         local TXT = Color3.fromRGB(236, 239, 246)
         local DIM = Color3.fromRGB(150, 156, 170)
         local WHITE = Color3.new(1, 1, 1)
-        local DOCK_H, MARGIN = 56, 14
+        local DOCK_H, MARGIN, GRIP_W = 56, 14, 16
         local W_MED, W_SEMI = Enum.FontWeight.Medium, Enum.FontWeight.SemiBold
         local AX, AY = Enum.AutomaticSize.X, Enum.AutomaticSize.Y
         local HORIZ, VERT = Enum.FillDirection.Horizontal, Enum.FillDirection.Vertical
@@ -15114,6 +15177,8 @@ do
             buttons = {},
             conns = {},
             alive = true,
+            width = nil, -- nil = lebar bawaan (terpusat)
+            free = false, -- true = dock sudah digeser/diubah ukurannya (menempel kiri)
         }
         barStates[win] = st
 
@@ -15122,6 +15187,11 @@ do
         mainBar.AnchorPoint = Vector2.new(1, 1)
         mainBar.Size = UDim2.new(1, 0, 1, -top)
         mainBar.Position = UDim2.new(1, 0, 1, 0)
+
+        -- Open Button hilang selama dock aktif
+        win.__FXDockActive = true
+        local ob = patchOpenButton()
+        if ob then pcall(function() (ob.__FXOrigVisible or ob.Visible)(ob, false) end) end
 
         -- ---------------------------------------------------------------- builder kecil
         local function make(class, props, children)
@@ -15185,11 +15255,10 @@ do
         -- ---------------------------------------------------------------- dock
         local bar = make("Frame", {
             Name = "FXDock", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -MARGIN),
-            Size = UDim2.new(0.62, 0, 0, DOCK_H), BackgroundColor3 = BASE, BackgroundTransparency = 0.06,
+            Size = UDim2.new(0, 520, 0, DOCK_H), BackgroundColor3 = BASE, BackgroundTransparency = 0.06,
             BorderSizePixel = 0, Active = true, ZIndex = 100, Parent = gui,
         }, {
             corner(UDim.new(1, 0)), stroke(0.88),
-            make("UISizeConstraint", {MinSize = Vector2.new(280, DOCK_H), MaxSize = Vector2.new(820, DOCK_H)}),
             pad(8, 7, 8, 7),
         })
         st.bar = bar
@@ -15204,21 +15273,112 @@ do
         }, {listH(6), pad(2, 0, 2, 0)})
         st.scroll = scroll
 
+        -- grip: geser ke kiri = dock memendek (menyisakan profil/settings/quick jump/eye/close), geser ke kanan = memanjang
+        local grip = make("TextButton", {
+            Name = "ResizeGrip", Text = "", AutoButtonColor = false, BackgroundTransparency = 1,
+            AnchorPoint = Vector2.new(1, 0.5), Size = UDim2.fromOffset(GRIP_W, 34), ZIndex = 102, Parent = bar,
+        }, {
+            make("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(3, 18),
+                BackgroundColor3 = WHITE, BackgroundTransparency = 0.7, BorderSizePixel = 0,
+            }, {corner(UDim.new(1, 0))}),
+        })
+        connect(grip.MouseEnter, function() grip.Frame.BackgroundTransparency = 0.35 end)
+        connect(grip.MouseLeave, function() grip.Frame.BackgroundTransparency = 0.7 end)
+
+        -- ---------------------------------------------------------------- geometri dock (resizable)
+        local function fixedWidth()
+            return left.AbsoluteSize.X + right.AbsoluteSize.X + GRIP_W + 16 + 16
+        end
+        local function bounds()
+            local sw = gui.AbsoluteSize.X
+            local maxW = math.max(sw - MARGIN * 2, 200)
+            local minW = math.min(math.max(fixedWidth(), 160), maxW)
+            return minW, maxW
+        end
+        local function defaultWidth()
+            local minW, maxW = bounds()
+            return math.clamp(math.floor(gui.AbsoluteSize.X * 0.62), math.max(minW, 280), math.min(maxW, 820))
+        end
         local function relayout()
             if not bar.Parent then return end
             local lw, rw = left.AbsoluteSize.X, right.AbsoluteSize.X
+            local inner = bar.AbsoluteSize.X - 16
+            local tabsW = inner - lw - rw - GRIP_W - 16
+            grip.Position = UDim2.new(1, -(rw + 6), 0.5, 0)
             tabsHolder.Position = UDim2.fromOffset(lw + 8, 0)
-            tabsHolder.Size = UDim2.new(1, -(lw + rw + 16), 1, 0)
+            tabsHolder.Size = UDim2.new(0, math.max(tabsW, 0), 1, 0)
+            tabsHolder.Visible = tabsW >= 56 -- terlalu sempit: sembunyikan tab, sisakan tombol tetap
         end
-        connect(left:GetPropertyChangedSignal "AbsoluteSize", relayout)
-        connect(right:GetPropertyChangedSignal "AbsoluteSize", relayout)
-        connect(bar:GetPropertyChangedSignal "AbsoluteSize", relayout)
+        local function applyGeometry()
+            if not bar.Parent then return end
+            local minW, maxW = bounds()
+            local w = math.clamp(st.width or defaultWidth(), minW, maxW)
+            if st.free then
+                local sw = gui.AbsoluteSize.X
+                st.x = math.clamp(st.x or (sw - w) / 2, MARGIN, math.max(sw - w - MARGIN, MARGIN))
+                bar.AnchorPoint = Vector2.new(0, 1)
+                bar.Position = UDim2.new(0, st.x, 1, -MARGIN)
+            else
+                bar.AnchorPoint = Vector2.new(0.5, 1)
+                bar.Position = UDim2.new(0.5, 0, 1, -MARGIN)
+            end
+            bar.Size = UDim2.new(0, w, 0, DOCK_H)
+            relayout()
+        end
+        st.applyGeometry = applyGeometry
+        function st.setWidth(w)
+            if w == nil then
+                st.width, st.free, st.x = nil, false, nil
+            else
+                if not st.free then st.x = bar.AbsolutePosition.X end
+                st.free, st.width = true, w
+            end
+            applyGeometry()
+        end
+        connect(left:GetPropertyChangedSignal "AbsoluteSize", applyGeometry)
+        connect(right:GetPropertyChangedSignal "AbsoluteSize", applyGeometry)
+        connect(gui:GetPropertyChangedSignal "AbsoluteSize", applyGeometry)
+
+        do -- drag grip
+            local active, startX, startW
+            connect(grip.InputBegan, function(input)
+                if input.UserInputType ~= MB1 and input.UserInputType ~= TOUCH then return end
+                local now = os.clock()
+                if now - (st.lastGripClick or 0) < 0.35 then -- dobel klik/tap: kembali ke ukuran bawaan
+                    st.lastGripClick = 0
+                    st.setWidth(nil)
+                    return
+                end
+                st.lastGripClick = now
+                active, startX, startW = input, input.Position.X, bar.AbsoluteSize.X
+                st.free, st.x = true, bar.AbsolutePosition.X
+                st.width = startW
+            end)
+            connect(UIS.InputChanged, function(input)
+                if not active then return end
+                if input ~= active and input.UserInputType ~= MMOVE then return end
+                st.width = startW + (input.Position.X - startX)
+                applyGeometry()
+            end)
+            connect(UIS.InputEnded, function(input)
+                if active and (input == active or (active.UserInputType == MB1 and input.UserInputType == MB1)) then
+                    active = nil
+                end
+            end)
+        end
 
         -- ---------------------------------------------------------------- popup
         local function closePopup()
             if st.popup then pcall(function() st.popup:Destroy() end) st.popup = nil end
             if st.backdrop then pcall(function() st.backdrop:Destroy() end) st.backdrop = nil end
             st.popupKind = nil
+        end
+        local function popupCenterX()
+            local sw = gui.AbsoluteSize.X
+            local pw = math.min(sw * 0.8, 340)
+            local cx = bar.AbsolutePosition.X + bar.AbsoluteSize.X / 2
+            return math.clamp(cx, pw / 2 + 8, math.max(sw - pw / 2 - 8, pw / 2 + 8))
         end
         local function openPopup(kind, title, build)
             if st.popupKind == kind then closePopup() return end
@@ -15227,7 +15387,7 @@ do
             st.backdrop = make("TextButton", {Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 105, Parent = gui})
             st.backdrop.Activated:Connect(closePopup)
             local pop = make("Frame", {
-                Name = "FXDockPopup", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -(DOCK_H + MARGIN + 10)),
+                Name = "FXDockPopup", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0, popupCenterX(), 1, -(DOCK_H + MARGIN + 10)),
                 Size = UDim2.new(0.8, 0, 0, 0), AutomaticSize = AY, BackgroundColor3 = BASE, BackgroundTransparency = 0.04,
                 BorderSizePixel = 0, Active = true, ZIndex = 110, Parent = gui,
             }, {
@@ -15291,6 +15451,16 @@ do
             end)
         end
 
+        local function buttonRow(parent, text, onClick, order)
+            local btn = make("TextButton", {
+                Text = text, AutoButtonColor = false, TextSize = 14, TextColor3 = TXT, FontFace = Font.new(Creator.Font, W_MED),
+                BackgroundColor3 = ACCENT, BackgroundTransparency = 0.78, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 36),
+                LayoutOrder = order or 0, Parent = parent,
+            }, {corner(UDim.new(0, 10))})
+            btn.Activated:Connect(onClick)
+            return btn
+        end
+
         -- ---------------------------------------------------------------- aksi
         local function goTab(idx)
             local tab = TabModule.Tabs and TabModule.Tabs[idx]
@@ -15310,6 +15480,35 @@ do
             return tabs
         end
 
+        -- susunan lengkap: tab lepas + section (dengan tab di dalamnya) + divider + space.
+        -- Tab yang tidak tercatat (mis. dibuat tanpa wrapper) ditambahkan di akhir.
+        local function layoutItems()
+            local out, seen = {}, {}
+            for _, item in ipairs(itemsOf(win)) do
+                if item.kind == "tab" and item.tab and item.tab.Index then
+                    seen[item.tab.Index] = true
+                    table.insert(out, item)
+                elseif item.kind == "section" then
+                    local live = {}
+                    for _, t in ipairs(item.tabs or {}) do
+                        if t.Index and TabModule.Tabs[t.Index] then
+                            seen[t.Index] = true
+                            table.insert(live, t)
+                        end
+                    end
+                    table.insert(out, {kind = "section", ref = item, title = item.title, icon = item.icon, tabs = live})
+                else
+                    table.insert(out, item)
+                end
+            end
+            for _, entry in ipairs(listTabs()) do
+                if not seen[entry.Index] then
+                    table.insert(out, {kind = "tab", tab = entry.Data})
+                end
+            end
+            return out
+        end
+
         local function openLayout()
             openPopup("layout", "Layout", function(pop)
                 segRow(pop, "Tab layout", {"Sidebar", "Dock"}, "Dock", function(v)
@@ -15318,9 +15517,13 @@ do
                         win:SetTabLayout("Sidebar")
                     end
                 end, 1)
+                segRow(pop, "Dock size", {"Min", "Default", "Max"}, nil, function(v)
+                    local minW, maxW = bounds()
+                    if v == "Min" then st.setWidth(minW) elseif v == "Max" then st.setWidth(maxW) else st.setWidth(nil) end
+                end, 2)
                 segRow(pop, "Topbar style", {"Default", "Mac"}, (win.Topbar and win.Topbar.ButtonsType == "Mac") and "Mac" or "Default", function(v)
                     win:SetTopbarStyle(v)
-                end, 2)
+                end, 3)
             end)
         end
 
@@ -15333,6 +15536,7 @@ do
             end)
         end
 
+        -- Quick jump: bisa di-scroll atas-bawah, tersusun per Section (bisa dilipat), ada pencarian
         local function openJump()
             openPopup("jump", "Quick jump", function(pop)
                 local box = make("TextBox", {
@@ -15340,33 +15544,153 @@ do
                     FontFace = Font.new(Creator.Font, W_MED), TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false,
                     BackgroundColor3 = WHITE, BackgroundTransparency = 0.93, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 1, Parent = pop,
                 }, {corner(UDim.new(0, 10)), pad(12, 0, 12, 0)})
+
+                local maxH = math.clamp(math.floor(gui.AbsoluteSize.Y * 0.42), 150, 360)
                 local list = make("ScrollingFrame", {
-                    BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY,
-                    AutomaticCanvasSize = AY, CanvasSize = UDim2.new(), ScrollBarThickness = 3, LayoutOrder = 2, Parent = pop,
-                }, {listV(4), make("UISizeConstraint", {MaxSize = Vector2.new(10000, 220)})})
+                    Name = "JumpList", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 100),
+                    CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y,
+                    ScrollBarThickness = 3, Active = true, ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
+                    LayoutOrder = 2, Parent = pop,
+                }, {listV(4)})
+                local layout = list:FindFirstChildOfClass "UIListLayout"
+                local function fit()
+                    list.Size = UDim2.new(1, 0, 0, math.min(math.max(layout.AbsoluteContentSize.Y, 36), maxH))
+                end
+                layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fit)
+
+                local function row(parent, order, tab, indent)
+                    local active = tab.Index == TabModule.SelectedTab
+                    local r = make("TextButton", {
+                        Name = "Row", Text = "", AutoButtonColor = false, BackgroundColor3 = WHITE,
+                        BackgroundTransparency = active and 0.9 or 1, BorderSizePixel = 0,
+                        Size = UDim2.new(1, 0, 0, 36), LayoutOrder = order, Parent = parent,
+                    }, {corner(UDim.new(0, 10)), listH(10), pad(10 + (indent or 0), 0, 10, 0)})
+                    local holder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), LayoutOrder = 1, Parent = r})
+                    if tab.Icon then tintIcon(makeIcon(tab.Icon, 18, holder), active and ACCENT or DIM, 0) end
+                    make("TextLabel", {
+                        BackgroundTransparency = 1, Text = tostring(tab.Title), TextSize = 14, TextColor3 = active and TXT or TXT,
+                        FontFace = Font.new(Creator.Font, active and W_SEMI or W_MED), TextXAlignment = Enum.TextXAlignment.Left,
+                        Size = UDim2.new(1, -28, 1, 0), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd, Parent = r,
+                    })
+                    r.MouseEnter:Connect(function() r.BackgroundTransparency = 0.92 end)
+                    r.MouseLeave:Connect(function() r.BackgroundTransparency = active and 0.9 or 1 end)
+                    r.Activated:Connect(function()
+                        closePopup()
+                        goTab(tab.Index)
+                    end)
+                end
+
                 local function fill(filter)
                     for _, c in ipairs(list:GetChildren()) do
-                        if c:IsA "TextButton" then c:Destroy() end
+                        if not c:IsA "UIListLayout" then c:Destroy() end
                     end
                     filter = string.lower(filter or "")
-                    for order, entry in ipairs(listTabs()) do
-                        local title = tostring(entry.Data.Title)
-                        if filter == "" or string.find(string.lower(title), filter, 1, true) then
-                            local row = make("TextButton", {Text = "", AutoButtonColor = false, BackgroundColor3 = WHITE, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = order, Parent = list}, {corner(UDim.new(0, 10)), listH(10), pad(10, 0, 10, 0)})
-                            local holder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), LayoutOrder = 1, Parent = row})
-                            if entry.Data.Icon then tintIcon(makeIcon(entry.Data.Icon, 18, holder), DIM, 0) end
-                            make("TextLabel", {BackgroundTransparency = 1, Text = title, TextSize = 14, TextColor3 = TXT, FontFace = Font.new(Creator.Font, W_MED), TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -30, 1, 0), LayoutOrder = 2, Parent = row})
-                            row.MouseEnter:Connect(function() row.BackgroundTransparency = 0.92 end)
-                            row.MouseLeave:Connect(function() row.BackgroundTransparency = 1 end)
-                            row.Activated:Connect(function()
-                                closePopup()
-                                goTab(entry.Index)
-                            end)
+                    local searching = filter ~= ""
+                    local function matches(s) return string.find(string.lower(tostring(s or "")), filter, 1, true) ~= nil end
+                    local order = 0
+                    for _, item in ipairs(layoutItems()) do
+                        if item.kind == "tab" then
+                            if not searching or matches(item.tab.Title) then
+                                order += 1
+                                row(list, order, item.tab, 0)
+                            end
+                        elseif item.kind == "section" then
+                            local visible = {}
+                            local titleHit = searching and matches(item.title)
+                            for _, t in ipairs(item.tabs) do
+                                if not searching or titleHit or matches(t.Title) then table.insert(visible, t) end
+                            end
+                            if #visible > 0 then
+                                local ref = item.ref
+                                local open = searching or ref.jumpOpen ~= false
+                                order += 1
+                                local head = make("TextButton", {
+                                    Name = "Section", Text = "", AutoButtonColor = false, BackgroundTransparency = 1,
+                                    Size = UDim2.new(1, 0, 0, 30), LayoutOrder = order, Parent = list,
+                                }, {listH(8), pad(10, 0, 10, 0)})
+                                local ico = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), LayoutOrder = 1, Parent = head})
+                                if item.icon then tintIcon(makeIcon(item.icon, 16, ico), DIM, 0.1) end
+                                make("TextLabel", {
+                                    BackgroundTransparency = 1, Text = string.upper(tostring(item.title or "Section")), TextSize = 11, TextColor3 = DIM,
+                                    FontFace = Font.new(Creator.Font, W_SEMI), TextXAlignment = Enum.TextXAlignment.Left,
+                                    Size = UDim2.new(1, -52, 1, 0), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+                                })
+                                local chevHolder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 30), LayoutOrder = 3, Parent = head})
+                                tintIcon(makeIcon(open and "chevron-down" or "chevron-right", 14, chevHolder), DIM, 0.1)
+                                if not searching then
+                                    head.Activated:Connect(function()
+                                        ref.jumpOpen = not open
+                                        fill(box.Text)
+                                    end)
+                                end
+                                if open then
+                                    for _, t in ipairs(visible) do
+                                        order += 1
+                                        row(list, order, t, 12)
+                                    end
+                                end
+                            end
+                        elseif item.kind == "divider" and not searching then
+                            order += 1
+                            make("Frame", {BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, BorderSizePixel = 0, Size = UDim2.new(1, -20, 0, 1), LayoutOrder = order, Parent = list})
                         end
                     end
+                    if order == 0 then
+                        make("TextLabel", {
+                            BackgroundTransparency = 1, Text = "No tabs found", TextSize = 13, TextColor3 = DIM,
+                            FontFace = Font.new(Creator.Font, W_MED), Size = UDim2.new(1, 0, 0, 30), Parent = list,
+                        })
+                    end
+                    task.defer(fit)
                 end
                 fill("")
                 box:GetPropertyChangedSignal("Text"):Connect(function() fill(box.Text) end)
+            end)
+        end
+
+        -- Profil: kartu nama + avatar (menggantikan tombol profil bawaan di kiri-bawah window)
+        local function profileImage()
+            local pb = findProfileButton(win)
+            local ok, img = pcall(function() return pb.UserIcon:FindFirstChildOfClass("ImageLabel").Image end)
+            if ok and img and img ~= "" then return img end
+            local ok2, thumb = pcall(function()
+                return Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+            end)
+            return ok2 and thumb or ""
+        end
+        local function profileNames()
+            local anon = win.User and win.User.Anonymous
+            local lp = Players.LocalPlayer
+            return anon and "Anonymous" or tostring(lp and lp.DisplayName or "Player"), anon and "anonymous" or tostring(lp and lp.Name or "player")
+        end
+
+        local openProfile
+        function openProfile()
+            openPopup("profile", "Profile", function(pop)
+                local card = make("Frame", {
+                    BackgroundColor3 = WHITE, BackgroundTransparency = 0.94, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 72), LayoutOrder = 1, Parent = pop,
+                }, {corner(UDim.new(0, 14)), listH(12), pad(10, 0, 10, 0)})
+                make("ImageLabel", {
+                    Image = profileImage(), BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, BorderSizePixel = 0,
+                    Size = UDim2.fromOffset(52, 52), LayoutOrder = 1, Parent = card,
+                }, {corner(UDim.new(1, 0))})
+                local who = make("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1, -66, 0, 44), LayoutOrder = 2, Parent = card}, {
+                    make("UIListLayout", {FillDirection = VERT, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2)}),
+                })
+                local dn, un = profileNames()
+                label(who, dn, 16, TXT, 1, W_SEMI).TextTruncate = Enum.TextTruncate.AtEnd
+                label(who, "@" .. un, 13, DIM, 2).TextTruncate = Enum.TextTruncate.AtEnd
+                toggleRow(pop, "Hide identity", win.User and win.User.Anonymous or false, function(v)
+                    pcall(function() win.User:SetAnonymous(v) end)
+                    closePopup()
+                    task.defer(openProfile)
+                end, 2)
+                if win.User and win.User.Callback then
+                    buttonRow(pop, "Open profile", function()
+                        closePopup()
+                        pcall(win.User.Callback)
+                    end, 3)
+                end
             end)
         end
 
@@ -15382,12 +15706,56 @@ do
         end
 
         -- ---------------------------------------------------------------- isi dock (kiri)
-        iconButton(left, "folder", 38, 38, 1, openLayout)
-        sep(left, 2)
-        local pill = make("Frame", {BackgroundColor3 = WHITE, BackgroundTransparency = 0.93, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 38), AutomaticSize = AX, LayoutOrder = 3, Parent = left}, {corner(UDim.new(1, 0)), stroke(0.9), listH(2), pad(3, 0, 3, 0)})
+        local profileBtn = make("TextButton", {
+            Name = "Profile", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
+            Size = UDim2.fromOffset(38, 38), LayoutOrder = 1, Parent = left,
+        }, {corner(UDim.new(1, 0))})
+        local avatar = make("ImageLabel", {
+            Image = profileImage(), BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, BorderSizePixel = 0,
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(32, 32), Parent = profileBtn,
+        }, {corner(UDim.new(1, 0)), stroke(0.8)})
+        connect(profileBtn.MouseEnter, function() tw(profileBtn, 0.12, {BackgroundTransparency = 0.9}) end)
+        connect(profileBtn.MouseLeave, function() tw(profileBtn, 0.12, {BackgroundTransparency = 1}) end)
+        connect(profileBtn.Activated, openProfile)
+        local profileSep = sep(left, 2)
+        local function refreshProfile()
+            local enabled = win.User ~= nil and win.User.Enabled ~= false
+            profileBtn.Visible, profileSep.Visible = enabled, enabled
+            local img = profileImage()
+            if img ~= "" and avatar.Image ~= img then avatar.Image = img end
+            -- profil bawaan di kiri-bawah window disembunyikan selama dock aktif
+            local pb = findProfileButton(win)
+            if pb and pb.Visible then pb.Visible = false end
+        end
+        refreshProfile()
+        if win.User and not win.User.__FXDockPatched then
+            win.User.__FXDockPatched = true
+            for _, fname in ipairs {"Enable", "Disable"} do
+                local orig = win.User[fname]
+                if type(orig) == "function" then
+                    win.User[fname] = function(...)
+                        local r = orig(...)
+                        if win.__FXDockActive then
+                            local pb = findProfileButton(win)
+                            if pb then pb.Visible = false end
+                            local s = barStates[win]
+                            if s and s.refreshProfile then s.refreshProfile() end
+                        end
+                        return r
+                    end
+                end
+            end
+        end
+        st.refreshProfile = refreshProfile
+
+        iconButton(left, "folder", 38, 38, 3, openLayout)
+        sep(left, 4)
+        local pill = make("Frame", {BackgroundColor3 = WHITE, BackgroundTransparency = 0.93, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 38), AutomaticSize = AX, LayoutOrder = 5, Parent = left}, {
+            corner(UDim.new(1, 0)), stroke(0.9), listH(2), pad(3, 0, 3, 0),
+        })
         iconButton(pill, "settings", 36, 32, 1, openSettings)
         iconButton(pill, "command", 36, 32, 2, openJump)
-        sep(left, 4)
+        sep(left, 6)
 
         -- kanan: eye + close
         sep(right, 1)
@@ -15437,6 +15805,8 @@ do
                     item.label.TextColor3 = active and TXT or DIM
                     tintIcon(item.icon, active and ACCENT or DIM, 0)
                     if active then
+                        -- tab terpilih ada di section yang terlipat: buka otomatis
+                        if item.group and not item.group.open then item.group.set(true) end
                         task.defer(function()
                             if not item.btn.Parent then return end
                             local x = item.btn.AbsolutePosition.X - scroll.AbsolutePosition.X
@@ -15452,37 +15822,96 @@ do
             end
         end
 
+        local function makeTabButton(parent, order, tab, group)
+            local idx = tab.Index
+            local btn = make("TextButton", {
+                Name = "Tab_" .. tostring(idx), Text = "", AutoButtonColor = false, BackgroundColor3 = ACCENT,
+                BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 38), AutomaticSize = AX,
+                LayoutOrder = order, Parent = parent,
+            }, {corner(UDim.new(1, 0)), listH(7), pad(14, 0, 14, 0)})
+            local tabStroke = stroke(1, ACCENT)
+            tabStroke.Parent = btn
+            local icon
+            if tab.Icon then
+                local holder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), LayoutOrder = 1, Parent = btn})
+                icon = makeIcon(tab.Icon, 18, holder)
+                if not icon then holder:Destroy() end
+            end
+            local lab = make("TextLabel", {
+                BackgroundTransparency = 1, Text = tostring(tab.Title), TextSize = 14, TextColor3 = DIM,
+                FontFace = Font.new(Creator.Font, W_MED), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, LayoutOrder = 2, Parent = btn,
+            })
+            btn.Activated:Connect(function()
+                if os.clock() - lastDragEnd < 0.2 then return end -- akhir gerakan geser, bukan klik
+                goTab(idx)
+            end)
+            st.buttons[idx] = {btn = btn, stroke = tabStroke, label = lab, icon = icon, group = group}
+            if group then
+                btn.Visible = group.open
+                table.insert(group.buttons, btn)
+            end
+        end
+
         local function refresh()
             if not bar.Parent then return end
-            for _, item in pairs(st.buttons) do
-                if item.btn then item.btn:Destroy() end
+            local keepX = scroll.CanvasPosition.X
+            for _, c in ipairs(scroll:GetChildren()) do
+                if c:IsA "GuiObject" then c:Destroy() end
             end
             st.buttons = {}
-            for order, entry in ipairs(listTabs()) do
-                local idx, tab = entry.Index, entry.Data
-                local btn = make("TextButton", {
-                    Name = "Tab_" .. tostring(idx), Text = "", AutoButtonColor = false, BackgroundColor3 = ACCENT,
-                    BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 38), AutomaticSize = AX,
-                    LayoutOrder = order, Parent = scroll,
-                }, {corner(UDim.new(1, 0)), listH(7), pad(14, 0, 14, 0)})
-                local tabStroke = stroke(1, ACCENT)
-                tabStroke.Parent = btn
-                local icon
-                if tab.Icon then
-                    local holder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(18, 18), LayoutOrder = 1, Parent = btn})
-                    icon = makeIcon(tab.Icon, 18, holder)
-                    if not icon then holder:Destroy() end
+            local order = 0
+            local function nextOrder() order += 1 return order end
+
+            for _, item in ipairs(layoutItems()) do
+                if item.kind == "tab" then
+                    makeTabButton(scroll, nextOrder(), item.tab, nil)
+                elseif item.kind == "divider" then
+                    sep(scroll, nextOrder())
+                elseif item.kind == "space" then
+                    make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(item.size or 12, 1), LayoutOrder = nextOrder(), Parent = scroll})
+                elseif item.kind == "section" and #item.tabs > 0 then
+                    -- grup section: kapsul kecil berisi header (lipat/buka) + tab-tabnya
+                    local ref = item.ref
+                    local frame = make("Frame", {
+                        Name = "Section", BackgroundColor3 = WHITE, BackgroundTransparency = 0.93, BorderSizePixel = 0,
+                        Size = UDim2.fromOffset(0, 38), AutomaticSize = AX, LayoutOrder = nextOrder(), Parent = scroll,
+                    }, {corner(UDim.new(1, 0)), listH(4), pad(4, 0, 4, 0)})
+                    local group = {open = ref.dockOpen ~= false, buttons = {}}
+                    local head = make("TextButton", {
+                        Name = "Header", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
+                        Size = UDim2.fromOffset(0, 30), AutomaticSize = AX, LayoutOrder = 0, Parent = frame,
+                    }, {corner(UDim.new(1, 0)), listH(6), pad(10, 0, 8, 0)})
+                    if item.icon then
+                        local ico = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(15, 15), LayoutOrder = 1, Parent = head})
+                        tintIcon(makeIcon(item.icon, 15, ico), DIM, 0)
+                    end
+                    make("TextLabel", {
+                        BackgroundTransparency = 1, Text = tostring(item.title or "Section"), TextSize = 12, TextColor3 = DIM,
+                        FontFace = Font.new(Creator.Font, W_SEMI), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, LayoutOrder = 2, Parent = head,
+                    })
+                    local chevHolder = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromOffset(12, 30), LayoutOrder = 3, Parent = head})
+                    local chevOpen = makeIcon("chevron-left", 12, chevHolder)
+                    local chevClosed = makeIcon("chevron-right", 12, chevHolder)
+                    tintIcon(chevOpen, DIM, 0)
+                    tintIcon(chevClosed, DIM, 0)
+                    group.set = function(v)
+                        group.open = v
+                        ref.dockOpen = v
+                        if chevOpen then chevOpen.Visible = v end
+                        if chevClosed then chevClosed.Visible = not v end
+                        for _, b in ipairs(group.buttons) do b.Visible = v end
+                    end
+                    group.set(group.open)
+                    connect(head.Activated, function()
+                        if os.clock() - lastDragEnd < 0.2 then return end
+                        group.set(not group.open)
+                    end)
+                    for _, t in ipairs(item.tabs) do
+                        makeTabButton(frame, nextOrder(), t, group)
+                    end
                 end
-                local lab = make("TextLabel", {
-                    BackgroundTransparency = 1, Text = tostring(tab.Title), TextSize = 14, TextColor3 = DIM,
-                    FontFace = Font.new(Creator.Font, W_MED), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, LayoutOrder = 2, Parent = btn,
-                })
-                btn.Activated:Connect(function()
-                    if os.clock() - lastDragEnd < 0.2 then return end -- akhir gerakan geser, bukan klik
-                    goTab(idx)
-                end)
-                st.buttons[idx] = {btn = btn, stroke = tabStroke, label = lab, icon = icon}
             end
+            scroll.CanvasPosition = Vector2.new(keepX, 0)
             sync()
         end
 
@@ -15492,26 +15921,48 @@ do
         end
         table.insert(FX.TabListeners, st.listener)
 
-        task.defer(relayout)
+        task.defer(applyGeometry)
         refresh()
         refreshEye()
 
-        -- Naikkan window bila bagian bawahnya tertutup dock
-        task.delay(1, function()
-            pcall(function()
-                local m = win.UIElements.Main
-                if not st.alive or win.Closed or not m.Visible then return end
-                local limit = gui.AbsoluteSize.Y - (DOCK_H + MARGIN + 10)
-                local bottom = m.AbsolutePosition.Y + m.AbsoluteSize.Y
-                if bottom > limit then
-                    local shift = math.min(bottom - limit, math.max(0, m.AbsolutePosition.Y - 8))
-                    m.Position = m.Position - UDim2.fromOffset(0, shift)
-                end
-            end)
+        -- ---------------------------------------------------------------- jaga window agar tidak tertutup dock
+        -- Dock berada di luar window (melayang di bawah layar). Jika window menimpa dock (mis. setelah di-drag),
+        -- window dinaikkan; bila ruang atas habis, tinggi window dikurangi. Jadi elemen paling bawah tetap bisa disentuh.
+        local lastPointer = 0
+        connect(UIS.InputChanged, function(input)
+            if input.UserInputType == TOUCH or (input.UserInputType == MMOVE and UIS:IsMouseButtonPressed(MB1)) then
+                lastPointer = os.clock()
+            end
         end)
+        local function avoidDock()
+            if win.AvoidDock == false or win.Closed or win.Destroyed then return end
+            local m = win.UIElements.Main
+            if not m or not m.Visible then return end
+            if os.clock() - lastPointer < 0.35 then return end -- sedang di-drag/resize
+            local bp, bs = bar.AbsolutePosition, bar.AbsoluteSize
+            local mp, ms = m.AbsolutePosition, m.AbsoluteSize
+            if mp.X + ms.X <= bp.X - 6 or mp.X >= bp.X + bs.X + 6 then return end -- tidak bersinggungan secara horizontal
+            local dockTop = bp.Y - 10
+            local over = (mp.Y + ms.Y) - dockTop
+            if over <= 0 then return end
+            local shift = math.min(over, math.max(0, mp.Y - 8))
+            if shift > 0 then
+                tw(m, 0.25, {Position = m.Position - UDim2.fromOffset(0, shift)})
+            end
+            local rest = over - shift
+            if rest > 0.5 and m.Size.Y.Scale == 0 then
+                local s = pscale()
+                local newH = math.max(m.Size.Y.Offset - rest / s, 300)
+                tw(m, 0.25, {Size = UDim2.new(m.Size.X.Scale, m.Size.X.Offset, 0, newH)})
+            end
+        end
+        st.avoidDock = avoidDock
+
         task.spawn(function()
-            while st.alive and bar.Parent do
+            while st.alive and bar.Parent and not win.Destroyed do
                 refreshEye()
+                refreshProfile()
+                pcall(avoidDock)
                 task.wait(0.25)
             end
             if barStates[win] == st then pcall(teardown, st) end
@@ -15629,6 +16080,55 @@ do
 
         local win = origCreate(self, cfg)
         if not win then return win end
+
+        -- catat urutan Tab / Section / Divider / Space (dipakai Dock & Quick Jump)
+        local items = itemsOf(win)
+        local origTab, origSection, origDivider = win.Tab, win.Section, win.Divider
+        win.Tab = function(w, c)
+            local t = origTab(w, c)
+            table.insert(items, {kind = "tab", tab = t})
+            if FX.RefreshBars then FX.RefreshBars() end
+            return t
+        end
+        win.Section = function(w, c)
+            c = c or {}
+            local sec = origSection(w, c)
+            local item = {kind = "section", sec = sec, title = c.Title, icon = c.Icon, tabs = {}}
+            local origSecTab = sec.Tab
+            sec.Tab = function(s2, tc)
+                local t = origSecTab(s2, tc)
+                table.insert(item.tabs, t)
+                if FX.RefreshBars then FX.RefreshBars() end
+                return t
+            end
+            table.insert(items, item)
+            if FX.RefreshBars then FX.RefreshBars() end
+            return sec
+        end
+        win.Divider = function(w)
+            local d = origDivider(w)
+            table.insert(items, {kind = "divider"})
+            if FX.RefreshBars then FX.RefreshBars() end
+            return d
+        end
+        -- Window:Space{Size = 12} atau Window:Space(12): jarak di sidebar dan di dock
+        win.Space = function(_, c)
+            local size = type(c) == "number" and c or (type(c) == "table" and c.Size) or 12
+            local f = New("Frame", {Name = "Space", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, size), Parent = win.UIElements.SideBar.Frame})
+            table.insert(items, {kind = "space", size = size})
+            if FX.RefreshBars then FX.RefreshBars() end
+            return f
+        end
+        -- ukuran dock: SetDockWidth(px) / SetDockWidth(nil) = bawaan ; AvoidDock = false untuk mematikan penghindaran window
+        win.SetDockWidth = function(_, w)
+            local st = barStates[win]
+            if st and st.setWidth then st.setWidth(w) end
+        end
+        win.GetDockWidth = function()
+            local st = barStates[win]
+            return st and st.bar and st.bar.AbsoluteSize.X or nil
+        end
+        win.SetDockAvoid = function(_, on) win.AvoidDock = on ~= false end
 
         win.SetDensity = function(_, m) return FX.SetDensity(m) end
         win.GetDensity = function() return FX.Density end
